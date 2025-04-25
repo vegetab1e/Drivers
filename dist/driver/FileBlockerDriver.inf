@@ -1,0 +1,158 @@
+;;;
+;;; FileBlockerDriver
+;;;
+
+[Version]
+Signature          = "$Windows NT$"
+Class              = "ActivityMonitor"                         ; This is determined by the work this filter driver does
+ClassGuid          = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ; This value is determined by the Class
+Provider           = %ProviderString%
+DriverVer = 05/13/2025,22.0.4.236
+CatalogFile        = FileBlockerDriver.cat
+PnpLockdown        = 1
+
+[SourceDisksFiles]
+FileBlockerDriver.sys = 1,,
+FileBlockerDriver.ini = 1,,
+
+[SourceDisksNames]
+1 = %DiskId1%,,,
+
+[DestinationDirs]
+FileBlockerDriverDownlevel.CopyDriverFiles = 12                ; %windir%\system32\drivers
+FileBlockerDriverDownlevel.DelDriverFiles  = 12                ; %windir%\system32\drivers
+; DIRID 13 появился в сборке 6.3.9600 (Windows 8.1), а начиная
+; со сборки 10.0...16299 (Windows 10 version 1709) Microsoft
+; настоятельно рекомендует использовать именно эту директорию
+FileBlockerDriver.DriverFiles              = 13                ; driver store
+
+;;
+;; Default install sections
+;;
+
+; Windows 11 version 24H2
+[DefaultInstall.NTamd64.10.0...26100]
+OptionDesc         = %ServiceDesc%
+CopyFiles          = FileBlockerDriver.DriverFiles
+
+[DefaultInstall.NTamd64.10.0...26100.Services]
+AddService         = %ServiceName%,,FileBlockerDriver.Service
+
+;
+; Services sections
+;
+
+[FileBlockerDriver.Service]
+DisplayName        = %ServiceName%
+Description        = %ServiceDesc%
+ServiceBinary      = %13%\%DriverName%.sys                     ; %windir%\system32\drivers\
+Dependencies       = "FltMgr"
+ServiceType        = 2                                         ; SERVICE_FILE_SYSTEM_DRIVER
+StartType          = 3                                         ; SERVICE_DEMAND_START
+ErrorControl       = 1                                         ; SERVICE_ERROR_NORMAL
+LoadOrderGroup     = "FSFilter Activity Monitor"
+AddReg             = FileBlockerDriver.AddRegistry,\
+                     FileBlockerDriverCommon.AddRegistry
+
+;
+; Registry modifications
+;
+
+; Следующие значения должны находиться
+; в подразделе "Parameters" начиная со
+; сборки 10.0...26100 (Windows 11 24H2)
+[FileBlockerDriver.AddRegistry]
+HKR,"Parameters","SupportedFeatures",0x00010001,0x3
+HKR,"Parameters\Instances","DefaultInstance",0x00000000,%DefaultInstance%
+HKR,"Parameters\Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
+HKR,"Parameters\Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
+
+[FileBlockerDriver.DriverFiles]
+%DriverName%.sys
+%DriverName%.ini
+
+;;
+;; Downlevel default install sections
+;;
+
+[DefaultInstall.NTamd64]
+OptionDesc         = %ServiceDesc%
+CopyFiles          = FileBlockerDriverDownlevel.CopyDriverFiles
+
+[DefaultInstall.NTamd64.Services]
+AddService         = %ServiceName%,,FileBlockerDriverDownlevel.Service
+
+;;
+;; Downlevel default uninstall sections
+;;
+
+; Разделы DefaultUninstall и DefaultUninstall.Services запрещены
+; начиная со сборки 10.0...18362 (Windows 10 version 1903)
+[DefaultUninstall.NTamd64]
+LegacyUninstall    = 1
+DelFiles           = FileBlockerDriverDownlevel.DelDriverFiles
+
+[DefaultUninstall.NTamd64.Services]
+DelService         = %ServiceName%,0x200                       ; Ensure service is stopped before deleting
+
+;
+; Downlevel services sections
+;
+
+[FileBlockerDriverDownlevel.Service]
+DisplayName        = %ServiceName%
+Description        = %ServiceDesc%
+ServiceBinary      = %12%\%DriverName%.sys                     ; %windir%\system32\drivers\
+Dependencies       = "FltMgr"
+ServiceType        = 2                                         ; SERVICE_FILE_SYSTEM_DRIVER
+StartType          = 3                                         ; SERVICE_DEMAND_START
+ErrorControl       = 1                                         ; SERVICE_ERROR_NORMAL
+LoadOrderGroup     = "FSFilter Activity Monitor"
+AddReg             = FileBlockerDriverDownlevel.AddRegistry,\
+                     FileBlockerDriverCommon.AddRegistry
+
+;
+; Downlevel registry modifications
+;
+
+[FileBlockerDriverDownlevel.AddRegistry]
+HKR,,"SupportedFeatures",0x00010001,0x3
+HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
+HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
+HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
+
+[FileBlockerDriverDownlevel.CopyDriverFiles]
+%DriverName%.sys
+%DriverName%.ini
+
+[FileBlockerDriverDownlevel.DelDriverFiles]
+%DriverName%.sys
+%DriverName%.ini
+
+;;
+;; Registry values shared for all OS versions
+;;
+
+[FileBlockerDriverCommon.AddRegistry]
+; HKR is HKLM\SYSTEM\ControlSet001\Services\FileBlockerDriver
+;     eq HKLM\SYSTEM\CurrentControlSet\Services\FileBlockerDriver
+HKR,,"ConfigFile",0x00000000,%DriverName%.ini
+;HKR,,"LogFile",0x00020000,%%SystemRoot%%\Logs\%DriverName%.log
+
+;;
+;; String Section
+;;
+
+[Strings]
+ProviderString     = "FileBlockerDriver Provider"
+ServiceDesc        = "FileBlockerDriver Minifilter Driver"
+ServiceName        = "FileBlockerDriver"
+DriverName         = "FileBlockerDriver"
+DiskId1            = "FileBlockerDriver Device Installation Disk"
+
+; Instances specific information
+DefaultInstance    = "FileBlockerDriver Instance"
+Instance1.Name     = "FileBlockerDriver Instance"
+Instance1.Altitude = "370000"
+Instance1.Flags    = 0x0                                       ; Allow all attachments
+

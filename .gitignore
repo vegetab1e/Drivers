@@ -1,0 +1,8 @@
+.vs/
+bin/
+build/
+
+*.user
+*.filters
+
+*.pfx
