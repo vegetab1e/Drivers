@@ -4,23 +4,26 @@
 
 #include "tools.h"
 
-static struct _FILE_BLOCKER_PROPERTIES
+static UNICODE_STRING SERVER_PORT_NAME = RTL_CONSTANT_STRING(L"\\FileBlockerFilterPort");
+
+typedef struct _FILE_BLOCKER_PROPERTIES
 {
     PFLT_FILTER filter_handle;
 #ifdef UNDER_CONSTRUCTION
     PFLT_PORT   server_port;
     PFLT_PORT   client_port;
 #endif
-} file_blocker_props;
+} FILE_BLOCKER_PROPERTIES, *PFILE_BLOCKER_PROPERTIES;
 
-static UNICODE_STRING SERVER_PORT_NAME = RTL_CONSTANT_STRING(L"\\FileBlockerFilterPort");
-
+DRIVER_INITIALIZE driverEntry;
 static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object);
+
 static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags);
 static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
                                    _In_ FLT_INSTANCE_SETUP_FLAGS flags,
                                    _In_ DEVICE_TYPE  volume_device_yype,
                                    _In_ FLT_FILESYSTEM_TYPE  volume_filesystem_type);
+
 static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
                                                       _In_ PCFLT_RELATED_OBJECTS filter_objects,
                                                       _Out_ PVOID* completion_context);
@@ -85,6 +88,8 @@ disconnectCallback(_In_opt_ PVOID connection_cookie)
 }
 #endif
 
+static FILE_BLOCKER_PROPERTIES file_blocker_props;
+
 static CONST FLT_OPERATION_REGISTRATION callbacks[] = {
     { IRP_MJ_CREATE,
       0,
@@ -116,7 +121,7 @@ static CONST FLT_REGISTRATION filter_registration = {
     NULL
 };
 
-NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver_object,
+NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
                      _In_ PUNICODE_STRING registry_path)
 {
     UNREFERENCED_PARAMETER(registry_path);

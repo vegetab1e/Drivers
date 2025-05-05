@@ -93,7 +93,7 @@
     </DriverSign>
     <ClCompile />
     <Link>
-      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+      <EntryPointSymbol>driverEntry</EntryPointSymbol>
       <AdditionalDependencies>FltMgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

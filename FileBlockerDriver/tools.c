@@ -4,29 +4,30 @@
 
 #include "tools.h"
 
-#define MAX_PATH_LEN 256
-#define MAX_FILE_LEN 1024
-#define MAX_STRING_LEN 256
-
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
-static CONST UNICODE_STRING EXT_TO_BLOCK = RTL_CONSTANT_STRING(L".txt");
-static CONST UNICODE_STRING TEXT_TO_BLOCK = RTL_CONSTANT_STRING(L"This текст should be blocked!");
+#define MAX_PATH_LEN    256
+#define MAX_FILE_LEN   1024
+#define MAX_STRING_LEN  256
 
-static struct _FILE_BLOCKER_CONFIGURATION
+static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
+
+static CONST UNICODE_STRING EXT_TO_BLOCK      = RTL_CONSTANT_STRING(L".txt");
+static CONST UNICODE_STRING TEXT_TO_BLOCK     = RTL_CONSTANT_STRING(L"This текст should be blocked!");
+
+static       UNICODE_STRING CONFIG_FILE_PATH  = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
+
+static       UNICODE_STRING REGISTRY_KEY_PATH = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services"
+                                                                    L"\\FileBlockerDriver\\Parameters");
+static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigPath");
+
+typedef struct _FILE_BLOCKER_CONFIGURATION
 {
     UNICODE_STRING ext_to_block;
     UNICODE_STRING text_to_block;
-} file_blocker_config;
+} FILE_BLOCKER_CONFIGURATION, *PFILE_BLOCKER_CONFIGURATION;
 
-static CONST UNICODE_STRING RECYCLE_BIN_NAME = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
-
-static UNICODE_STRING CONFIG_FILE_PATH = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
-
-static UNICODE_STRING REGISTRY_KEY_PATH = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services"
-                                                              L"\\FileBlockerDriver\\Parameters");
-
-static UNICODE_STRING VALUE_ENTRY_NAME = RTL_CONSTANT_STRING(L"ConfigPath");
+static FILE_BLOCKER_CONFIGURATION file_blocker_config;
 
 static BOOLEAN initUnicodeString(PUNICODE_STRING unicode_string)
 {
@@ -156,12 +157,16 @@ static VOID parseConfigurationData(_In_ PCCHAR buffer, _In_ USHORT size)
             if (not value_pointer)
             {
                 // до конца текущей строки
-                while (++i < size && buffer[i] != '\n')
-                    ;
+                do {
+                    ++i;
+                }
+                while (i < size && buffer[i] != '\n');
 
                 // до начала следующей непустой строки
                 while ((i + 1) < size && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
+                {
                     ++i;
+                }
 
                 j = i + 1;
                 continue;
@@ -170,7 +175,7 @@ static VOID parseConfigurationData(_In_ PCCHAR buffer, _In_ USHORT size)
             j = i + 1;
             is_name = FALSE;
         }
-        else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || i == size - 1))
+        else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == size))
         {
             CONST USHORT value_length = i - j;
             if (value_length)
@@ -188,7 +193,9 @@ static VOID parseConfigurationData(_In_ PCCHAR buffer, _In_ USHORT size)
 
             // до начала следующей непустой строки
             while ((i + 1) < size && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
+            {
                 ++i;
+            }
 
             j = i + 1;
             is_name = TRUE;
