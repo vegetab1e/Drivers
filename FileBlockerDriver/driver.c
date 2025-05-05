@@ -42,7 +42,7 @@ messageCallback(_In_ PVOID connection_cookie,
 
     PAGED_CODE();
 
-    KdPrint(("messageCallback() called"));
+    KdPrint(("messageCallback() called\n"));
 
     *output_buffer_length = 0;
 
@@ -63,7 +63,7 @@ connectCallback(_In_ PFLT_PORT client_port,
 
     PAGED_CODE();
 
-    KdPrint(("connectCallback() called"));
+    KdPrint(("connectCallback() called\n"));
 
     FLT_ASSERT(not file_blocker_props.client_port);
     file_blocker_props.client_port = client_port;
@@ -78,7 +78,7 @@ disconnectCallback(_In_opt_ PVOID connection_cookie)
 
     PAGED_CODE();
 
-    KdPrint(("disconnectCallback() called"));
+    KdPrint(("disconnectCallback() called\n"));
 
     FltCloseClientPort(file_blocker_props.filter_handle,
                        &file_blocker_props.client_port);
@@ -125,7 +125,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver_object,
 
     if (not initializeFileBlocker())
     {
-        KdPrint(("Initialization failed"));
+        KdPrint(("Initialization failed\n"));
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 
@@ -134,18 +134,18 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver_object,
                                         &file_blocker_props.filter_handle);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to register filter"));
+        KdPrint(("Failed to register filter\n"));
         return status;
     }
 
-    KdPrint(("Filter registered"));
+    KdPrint(("Filter registered\n"));
 
 #ifdef UNDER_CONSTRUCTION
     PSECURITY_DESCRIPTOR security_descriptor;
     status = FltBuildDefaultSecurityDescriptor(&security_descriptor, FLT_PORT_ALL_ACCESS);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to build security descriptor"));
+        KdPrint(("Failed to build security descriptor\n"));
         return status;
     }
 
@@ -169,7 +169,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver_object,
 
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to create communication port"));
+        KdPrint(("Failed to create communication port\n"));
         return status;
     }
 #endif
@@ -177,16 +177,16 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT driver_object,
     status = FltStartFiltering(file_blocker_props.filter_handle);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to start filtering"));
+        KdPrint(("Failed to start filtering\n"));
 
         FltUnregisterFilter(file_blocker_props.filter_handle);
 
-        KdPrint(("Filter unregistered"));
+        KdPrint(("Filter unregistered\n"));
         return status;
     }
 
-    KdPrint(("Filtering started"));
-    KdPrint(("Driver loaded"));
+    KdPrint(("Filtering started\n"));
+    KdPrint(("Driver loaded\n"));
     return status;
 }
 
@@ -203,12 +203,12 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
     {
         FltUnregisterFilter(file_blocker_props.filter_handle);
 
-        KdPrint(("Filter unregistered"));
+        KdPrint(("Filter unregistered\n"));
     }
 
     uninitializeFileBlocker();
 
-    KdPrint(("Driver unloaded"));
+    KdPrint(("Driver unloaded\n"));
 }
 
 static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
@@ -217,7 +217,7 @@ static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
 
     PAGED_CODE();
 
-    KdPrint(("Filter unloaded"));
+    KdPrint(("Filter unloaded\n"));
     return STATUS_SUCCESS;
 }
 
@@ -233,12 +233,12 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
 
     if (volume_device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM)
     {
-        KdPrint(("Filter not loaded (device/filesystem types): %lu/%i",
+        KdPrint(("Filter not loaded (device/filesystem types): %lu/%i\n",
                  volume_device_type, volume_filesystem_type));
         return STATUS_FLT_DO_NOT_ATTACH;
     }
 
-    KdPrint(("Filter loaded (device/filesystem types): %lu/%i",
+    KdPrint(("Filter loaded (device/filesystem types): %lu/%i\n",
              volume_device_type, volume_filesystem_type));
     return STATUS_SUCCESS;
 }
@@ -251,14 +251,14 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 
     if (not data or not filter_objects)
     {
-        KdPrint(("WARNING: Null pointer catched!"));
+        KdPrint(("WARNING: Null pointer catched!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
 #ifndef NDEBUG
     if (not FLT_IS_IRP_OPERATION(data))
     {
-        KdPrint(("WARNING: This is not IRP operation!"));
+        KdPrint(("WARNING: This is not IRP operation!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 #endif
@@ -273,7 +273,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 #ifdef PARANOID_MODE
     if (not io_parameter_block)
     {
-        KdPrint(("WARNING: Iopb is null!"));
+        KdPrint(("WARNING: Iopb is null!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 #endif
@@ -290,7 +290,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 #ifdef PARANOID_MODE
             if (not parameters->SetFileInformation.InfoBuffer)
             {
-                KdPrint(("WARNING: InfoBuffer is null!"));
+                KdPrint(("WARNING: InfoBuffer is null!\n"));
                 return FLT_PREOP_SUCCESS_NO_CALLBACK;
             }
 #endif
@@ -299,14 +299,14 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
                 return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
             // Удаление файла в корзину (первый этап, можно заблокировать)
-            KdPrint(("This is delete operation"));
+            KdPrint(("This is delete operation\n"));
         }
         else
         {
 #ifdef PARANOID_MODE
             if (not parameters->SetFileInformation.InfoBuffer)
             {
-                KdPrint(("WARNING: InfoBuffer is null!"));
+                KdPrint(("WARNING: InfoBuffer is null!\n"));
                 return FLT_PREOP_SUCCESS_NO_CALLBACK;
             }
 #endif
@@ -322,7 +322,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 #ifdef PARANOID_MODE
                 if (not parameters->SetFileInformation.ParentOfTarget)
                 {
-                    KdPrint(("WARNING: ParentOfTarget is null!"));
+                    KdPrint(("WARNING: ParentOfTarget is null!\n"));
                     return FLT_PREOP_SUCCESS_NO_CALLBACK;
                 }
 #endif
@@ -331,7 +331,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
                     return FLT_PREOP_SUCCESS_NO_CALLBACK;
             }
 
-            KdPrint(("This is rename or link operation"));
+            KdPrint(("This is rename or link operation\n"));
         }
 
         BOOLEAN is_directory = FALSE;
@@ -341,7 +341,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
                                                    filter_objects->Instance,
                                                    &is_directory)))
         {
-            KdPrint(("Failed to check file object type: 0x%08X", status));
+            KdPrint(("Failed to check file object type: 0x%08X\n", status));
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
         }
 
@@ -360,11 +360,11 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
             not (create_options & FILE_SEQUENTIAL_ONLY))       // не копирование
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-        KdPrint(("This is copy operation"));
+        KdPrint(("This is copy operation\n"));
     }
     else
     {
-        KdPrint(("This operation is not blocked"));
+        KdPrint(("This operation is not blocked\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
@@ -372,29 +372,29 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     // перемещается внутри функции, поэтому локальные переменные
     // в нём не используются, а проверки могут быть избыточны.
 #ifndef NDEBUG
-    KdPrint(("Callback called: 0x%08X",
+    KdPrint(("Callback called: 0x%08X\n",
              data->Iopb->MajorFunction));
 
     if (data->Iopb->TargetFileObject)
-        KdPrint(("[FLT_CALLBACK_DATA] FileName: %wZ",
+        KdPrint(("[FLT_CALLBACK_DATA] FileName: %wZ\n",
                  data->Iopb->TargetFileObject->FileName));
     if (filter_objects->FileObject)
-        KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ",
+        KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ\n",
                  filter_objects->FileObject->FileName));
     
     if (data->Iopb->MajorFunction == IRP_MJ_CREATE)
     {
         // The high 8 bits contains the CreateDisposition values.
-        KdPrint(("[IRP_MJ_CREATE] CreateDisposition: 0x%08X",
+        KdPrint(("[IRP_MJ_CREATE] CreateDisposition: 0x%08X\n",
                  data->Iopb->Parameters.Create.Options >> 24));
         // The low 24 bits contains CreateOptions flag values.
-        KdPrint(("[IRP_MJ_CREATE] CreateOptions: 0x%08X",
+        KdPrint(("[IRP_MJ_CREATE] CreateOptions: 0x%08X\n",
                  data->Iopb->Parameters.Create.Options & 0x00FFFFFF));
     }
     else
     if (data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION)
     {
-        KdPrint(("[IRP_MJ_SET_INFORMATION] FileInformationClass: %i",
+        KdPrint(("[IRP_MJ_SET_INFORMATION] FileInformationClass: %i\n",
                  data->Iopb->Parameters.SetFileInformation.FileInformationClass));
     }
 #endif
@@ -402,13 +402,13 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     PFILE_OBJECT file_object = io_parameter_block->TargetFileObject;
     if (not file_object)
     {
-        KdPrint(("Failed to get file object"));
+        KdPrint(("Failed to get file object\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
     if (not isExtensionBlocked(&file_object->FileName))
     {
-        KdPrint(("This file extension is not blocked"));
+        KdPrint(("This file extension is not blocked\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
@@ -419,19 +419,19 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 #ifdef PARANOID_MODE
     if (not file_name_info)
     {
-        KdPrint(("WARNING: FltGetFileNameInformation() out parameter is null!"));
+        KdPrint(("WARNING: FltGetFileNameInformation() out parameter is null!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 #endif
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to get file name info: 0x%08X", status));
+        KdPrint(("Failed to get file name info: 0x%08X\n", status));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
     if (isTextBlocked(file_name_info->Name))
     {
-        KdPrint(("Blocking operation on file: %wZ", file_name_info->Name));
+        KdPrint(("Blocking operation on file: %wZ\n", file_name_info->Name));
 
         FltReleaseFileNameInformation(file_name_info);
                 
@@ -441,7 +441,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
         return FLT_PREOP_COMPLETE;
     }
 
-    KdPrint(("This content is not blocked"));
+    KdPrint(("This content is not blocked\n"));
 
     FltReleaseFileNameInformation(file_name_info);
 

@@ -35,7 +35,7 @@ static BOOLEAN initUnicodeString(PUNICODE_STRING unicode_string)
 
     if (unicode_string->Buffer)
     {
-        KdPrint(("WARNING: String not empty!"));
+        KdPrint(("WARNING: String not empty!\n"));
 
         ExFreePool(unicode_string->Buffer);
     }
@@ -47,7 +47,7 @@ static BOOLEAN initUnicodeString(PUNICODE_STRING unicode_string)
                                              '1gaT');
     if (not unicode_string->Buffer)
     {
-        KdPrint(("Failed to allocate memory"));
+        KdPrint(("Failed to allocate memory\n"));
 
         unicode_string->MaximumLength = 0;
         
@@ -78,7 +78,7 @@ static BOOLEAN getConfigFilePath(_Out_ PUNICODE_STRING config_file_path)
     NTSTATUS status = ZwOpenKey(&key_handle, KEY_QUERY_VALUE, &object_attributes);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to open registry key: 0x%08X", status));
+        KdPrint(("Failed to open registry key: 0x%08X\n", status));
         return FALSE;
     }
 
@@ -94,21 +94,21 @@ static BOOLEAN getConfigFilePath(_Out_ PUNICODE_STRING config_file_path)
 
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to query value entry: 0x%08X", status));
+        KdPrint(("Failed to query value entry: 0x%08X\n", status));
         return FALSE;
     }
 
     PKEY_VALUE_PARTIAL_INFORMATION value_info = (PKEY_VALUE_PARTIAL_INFORMATION)buffer;
     if (value_info->Type != REG_EXPAND_SZ)
     {
-        KdPrint(("Wrong value entry type"));
+        KdPrint(("Wrong value entry type\n"));
         return FALSE;
     }
 
     if (value_info->DataLength <= sizeof(WCHAR) or
         *((PWCHAR)(value_info->Data + value_info->DataLength) - 1) != L'\0')
     {
-        KdPrint(("Wrong value entry"));
+        KdPrint(("Wrong value entry\n"));
         return FALSE;
     }
 
@@ -116,7 +116,7 @@ static BOOLEAN getConfigFilePath(_Out_ PUNICODE_STRING config_file_path)
     config_file_path->Length = (USHORT)(value_info->DataLength - sizeof(WCHAR));
     config_file_path->MaximumLength = config_file_path->Length;
 
-    KdPrint(("Config file path: %wZ", config_file_path));
+    KdPrint(("Config file path: %wZ\n", config_file_path));
     return TRUE;
 }
 
@@ -145,7 +145,7 @@ static VOID parseConfigurationData(_In_ PCCHAR buffer, _In_ USHORT size)
                     .MaximumLength = name_length
                 };
 
-                KdPrint(("Parameter name: \"%Z\"", name));
+                KdPrint(("Parameter name: \"%Z\"\n", name));
 
                 if (RtlEqualString(&names[0], &name, TRUE))
                     value_pointer = &file_blocker_config.ext_to_block;
@@ -181,7 +181,7 @@ static VOID parseConfigurationData(_In_ PCCHAR buffer, _In_ USHORT size)
                     .MaximumLength = value_length
                 };
 
-                KdPrint(("Parameter value: \"%Z\"", value));
+                KdPrint(("Parameter value: \"%Z\"\n", value));
 
                 RtlAnsiStringToUnicodeString(value_pointer, &value, FALSE);
             }
@@ -217,7 +217,7 @@ static BOOLEAN readConfigurationFile()
                                  FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to open file: 0x%08X", status));
+        KdPrint(("Failed to open file: 0x%08X\n", status));
 
         return FALSE;
     }
@@ -230,7 +230,7 @@ static BOOLEAN readConfigurationFile()
                                     FileStandardInformation);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to get file info: 0x%08X", status));
+        KdPrint(("Failed to get file info: 0x%08X\n", status));
 
         ZwClose(file_handle);
 
@@ -239,7 +239,7 @@ static BOOLEAN readConfigurationFile()
 
     if (file_standard_info.EndOfFile.QuadPart > MAX_FILE_LEN)
     {
-        KdPrint(("File to big"));
+        KdPrint(("File to big\n"));
 
         ZwClose(file_handle);
 
@@ -249,7 +249,7 @@ static BOOLEAN readConfigurationFile()
     PCHAR buffer = MmAllocateNonCachedMemory(file_standard_info.EndOfFile.QuadPart);
     if (not buffer)
     {
-        KdPrint(("Failed to allocate memory"));
+        KdPrint(("Failed to allocate memory\n"));
 
         ZwClose(file_handle);
         
@@ -275,12 +275,12 @@ static BOOLEAN readConfigurationFile()
 
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to read file: 0x%08X", status));
+        KdPrint(("Failed to read file: 0x%08X\n", status));
         return FALSE;
     }
 
     CONST USHORT num_bytes = (USHORT)io_status_block.Information;
-    KdPrint(("Number of bytes read: %hu", num_bytes));
+    KdPrint(("Number of bytes read: %hu\n", num_bytes));
 
     parseConfigurationData(buffer, num_bytes);
 
@@ -407,7 +407,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
                                  FILE_NON_DIRECTORY_FILE);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to open file: 0x%08X", status));
+        KdPrint(("Failed to open file: 0x%08X\n", status));
 
         return FALSE;
     }
@@ -420,7 +420,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
                                     FileStandardInformation);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to get file info: 0x%08X", status));
+        KdPrint(("Failed to get file info: 0x%08X\n", status));
 
         ZwClose(file_handle);
 
@@ -441,7 +441,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
                              file_handle);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to create section: 0x%08X", status));
+        KdPrint(("Failed to create section: 0x%08X\n", status));
 
         ZwClose(file_handle);
 
@@ -462,7 +462,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
                                 PAGE_READONLY);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to map view: 0x%08X", status));
+        KdPrint(("Failed to map view: 0x%08X\n", status));
 
         ZwClose(section_handle);
         ZwClose(file_handle);
@@ -488,7 +488,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
     }
     else
     {
-        KdPrint(("Failed to convert string: 0x%08X", status));
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
     }
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
