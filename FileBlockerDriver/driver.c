@@ -121,6 +121,7 @@ static CONST FLT_REGISTRATION filter_registration = {
     NULL
 };
 
+_Use_decl_annotations_
 NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
                      _In_ PUNICODE_STRING registry_path)
 {
@@ -195,6 +196,7 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     return status;
 }
 
+_Use_decl_annotations_
 static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 {
     UNREFERENCED_PARAMETER(driver_object);
@@ -216,6 +218,7 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
     KdPrint(("Driver unloaded\n"));
 }
 
+_Use_decl_annotations_
 static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
 {
     UNREFERENCED_PARAMETER(flags);
@@ -226,6 +229,7 @@ static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
     return STATUS_SUCCESS;
 }
 
+_Use_decl_annotations_
 static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
                                    _In_ FLT_INSTANCE_SETUP_FLAGS flags,
                                    _In_ DEVICE_TYPE  volume_device_type,
@@ -248,6 +252,7 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
     return STATUS_SUCCESS;
 }
 
+_Use_decl_annotations_
 static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
                                                       _In_ PCFLT_RELATED_OBJECTS filter_objects,
                                                       _Out_ PVOID* completion_context)

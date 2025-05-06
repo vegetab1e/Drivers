@@ -29,7 +29,7 @@ typedef struct _FILE_BLOCKER_CONFIGURATION
 
 static FILE_BLOCKER_CONFIGURATION file_blocker_config;
 
-static BOOLEAN initUnicodeString(PUNICODE_STRING unicode_string)
+static BOOLEAN initUnicodeString(_Out_ PUNICODE_STRING unicode_string)
 {
     if (not unicode_string)
         return FALSE;
@@ -296,6 +296,7 @@ static BOOLEAN readConfigurationFile()
     return TRUE;
 }
 
+_Use_decl_annotations_
 BOOLEAN initializeFileBlocker()
 {
     if (not initUnicodeString(&file_blocker_config.ext_to_block))
@@ -318,6 +319,7 @@ BOOLEAN initializeFileBlocker()
     return TRUE;
 }
 
+_Use_decl_annotations_
 VOID uninitializeFileBlocker()
 {
     if (file_blocker_config.ext_to_block.Buffer)
@@ -333,6 +335,7 @@ VOID uninitializeFileBlocker()
     }
 }
 
+_Use_decl_annotations_
 BOOLEAN isRecycleBinPath(_In_ PWCH file_name, _In_ ULONG file_name_len)
 {
     if ((file_name == NULL) ||
@@ -362,6 +365,7 @@ BOOLEAN isRecycleBinPath(_In_ PWCH file_name, _In_ ULONG file_name_len)
     return FALSE;
 }
 
+_Use_decl_annotations_
 BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
 {
     if ((file_name == NULL) || (file_name->Buffer == NULL) ||
@@ -391,6 +395,7 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
     return FALSE;
 }
 
+_Use_decl_annotations_
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 {
     if ((file_name.Buffer == NULL) ||
