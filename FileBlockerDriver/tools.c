@@ -29,7 +29,7 @@ typedef struct _FILE_BLOCKER_CONFIGURATION
 
 static FILE_BLOCKER_CONFIGURATION file_blocker_config;
 
-static BOOLEAN initUnicodeString(_Out_ PUNICODE_STRING unicode_string)
+static BOOLEAN initUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 {
     if (not unicode_string)
         return FALSE;
@@ -60,6 +60,7 @@ static BOOLEAN initUnicodeString(_Out_ PUNICODE_STRING unicode_string)
     return TRUE;
 }
 
+_Success_(return != FALSE)
 static BOOLEAN getConfigFilePath(_Out_ PUNICODE_STRING config_file_path)
 {
     static CHAR buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
@@ -121,7 +122,8 @@ static BOOLEAN getConfigFilePath(_Out_ PUNICODE_STRING config_file_path)
     return TRUE;
 }
 
-static VOID parseConfigurationData(_In_ PCCHAR buffer, _In_ USHORT size)
+static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
+                                   _In_ USHORT size)
 {
     static CONST ANSI_STRING names[] = {
         RTL_CONSTANT_STRING("ext_to_block"),
@@ -296,7 +298,6 @@ static BOOLEAN readConfigurationFile()
     return TRUE;
 }
 
-_Use_decl_annotations_
 BOOLEAN initializeFileBlocker()
 {
     if (not initUnicodeString(&file_blocker_config.ext_to_block))
@@ -319,7 +320,6 @@ BOOLEAN initializeFileBlocker()
     return TRUE;
 }
 
-_Use_decl_annotations_
 VOID uninitializeFileBlocker()
 {
     if (file_blocker_config.ext_to_block.Buffer)
@@ -336,7 +336,8 @@ VOID uninitializeFileBlocker()
 }
 
 _Use_decl_annotations_
-BOOLEAN isRecycleBinPath(_In_ PWCH file_name, _In_ ULONG file_name_len)
+BOOLEAN isRecycleBinPath(_In_reads_bytes_(file_name_len) PWCH file_name,
+                         _In_ ULONG file_name_len)
 {
     if ((file_name == NULL) ||
         (file_name_len < RECYCLE_BIN_NAME.Length))

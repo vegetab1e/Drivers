@@ -259,22 +259,21 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 {
     PAGED_CODE();
 
-    if (not data or not filter_objects)
+    if (not data or
+        not filter_objects or
+        not completion_context)
     {
         KdPrint(("WARNING: Null pointer catched!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-#ifndef NDEBUG
+    *completion_context = NULL;
+
     if (not FLT_IS_IRP_OPERATION(data))
     {
         KdPrint(("WARNING: This is not IRP operation!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
-#endif
-
-    if (completion_context)
-        *completion_context = NULL;
 
     if (data->RequestorMode == KernelMode)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
