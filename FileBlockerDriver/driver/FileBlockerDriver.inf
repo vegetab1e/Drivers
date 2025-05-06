@@ -10,7 +10,7 @@ Signature          = "$Windows NT$"
 Class              = "ActivityMonitor"                         ; This is determined by the work this filter driver does
 ClassGuid          = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ; This value is determined by the Class
 Provider           = %ProviderString%
-DriverVer = 05/05/2025,4.22.40.4
+DriverVer = 05/06/2025,3.0.23.274
 CatalogFile        = FileBlockerDriver.cat
 PnpLockdown        = 1
 
