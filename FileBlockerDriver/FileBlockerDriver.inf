@@ -31,13 +31,13 @@ FileBlockerDriver.DriverFiles              = 13                ; driver store
 ;; Default install sections
 ;;
 
-; Windows 10 version 1709 or later
-[DefaultInstall.NT$ARCH$.10.0...16299]
+; Windows 11 version 21H2
+[DefaultInstall.NT$ARCH$.10.0...22000]
 OptionDesc         = %ServiceDesc%
 CopyFiles          = FileBlockerDriver.DriverFiles,\
                      @%DriverName%.ini
 
-[DefaultInstall.NT$ARCH$.10.0...16299.Services]
+[DefaultInstall.NT$ARCH$.10.0...22000.Services]
 AddService         = %ServiceName%,,FileBlockerDriver.Service
 
 ;
@@ -53,20 +53,18 @@ ServiceType        = 2                                         ; SERVICE_FILE_SY
 StartType          = 3                                         ; SERVICE_DEMAND_START
 ErrorControl       = 1                                         ; SERVICE_ERROR_NORMAL
 LoadOrderGroup     = "FSFilter Activity Monitor"
-AddReg             = FileBlockerDriver.AddRegistry
+AddReg             = FileBlockerDriver.AddRegistry,\
+                     FileBlockerDriverCommon.AddRegistry
 
 ;
 ; Registry modifications
 ;
 
 [FileBlockerDriver.AddRegistry]
-; HKR is HKLM\SYSTEM\ControlSet001\Services\FileBlockerDriver
-;     eq HKLM\SYSTEM\CurrentControlSet\Services\FileBlockerDriver
 HKR,"Parameters","SupportedFeatures",0x00010001,0x3
 HKR,"Parameters\Instances","DefaultInstance",0x00000000,%DefaultInstance%
 HKR,"Parameters\Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
 HKR,"Parameters\Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
-HKR,"Parameters","ConfigPath",0x00020000,"\SystemRoot\System32\"%DriverName%.ini
 
 [FileBlockerDriver.DriverFiles]
 %DriverName%.sys
@@ -77,7 +75,8 @@ HKR,"Parameters","ConfigPath",0x00020000,"\SystemRoot\System32\"%DriverName%.ini
 
 [DefaultInstall.NT$ARCH$]
 OptionDesc         = %ServiceDesc%
-CopyFiles          = FileBlockerDriverDownlevel.CopyDriverFiles
+CopyFiles          = FileBlockerDriverDownlevel.CopyDriverFiles,\
+                     @%DriverName%.ini
 
 [DefaultInstall.NT$ARCH$.Services]
 AddService         = %ServiceName%,,FileBlockerDriverDownlevel.Service
@@ -106,7 +105,8 @@ ServiceType        = 2                                         ; SERVICE_FILE_SY
 StartType          = 3                                         ; SERVICE_DEMAND_START
 ErrorControl       = 1                                         ; SERVICE_ERROR_NORMAL
 LoadOrderGroup     = "FSFilter Activity Monitor"
-AddReg             = FileBlockerDriverDownlevel.AddRegistry
+AddReg             = FileBlockerDriverDownlevel.AddRegistry,\
+                     FileBlockerDriverCommon.AddRegistry
 
 ;
 ; Downlevel registry modifications
@@ -123,6 +123,15 @@ HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
 [FileBlockerDriverDownlevel.DelDriverFiles]
 %DriverName%.sys
+
+;;
+;; Registry values shared for all OS versions
+;;
+
+[FileBlockerDriverCommon.AddRegistry]
+; HKR is HKLM\SYSTEM\ControlSet001\Services\FileBlockerDriver
+;     eq HKLM\SYSTEM\CurrentControlSet\Services\FileBlockerDriver
+HKR,,"ConfigPath",0x00020000,"\SystemRoot\System32\"%DriverName%.ini
 
 ;;
 ;; String Section

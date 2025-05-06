@@ -123,13 +123,11 @@ static CONST FLT_REGISTRATION filter_registration = {
 
 _Use_decl_annotations_
 NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
-                     _In_ PUNICODE_STRING registry_path)
+                     _In_ PUNICODE_STRING registry_key_path)
 {
-    UNREFERENCED_PARAMETER(registry_path);
-
     driver_object->DriverUnload = driverUnload;
 
-    if (not initializeFileBlocker())
+    if (not initializeFileBlocker(registry_key_path))
     {
         KdPrint(("Initialization failed\n"));
         return STATUS_DEVICE_CONFIGURATION_ERROR;

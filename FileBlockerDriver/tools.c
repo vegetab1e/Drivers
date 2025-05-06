@@ -17,8 +17,6 @@ static CONST UNICODE_STRING TEXT_TO_BLOCK     = RTL_CONSTANT_STRING(L"This те�
 
 static       UNICODE_STRING CONFIG_FILE_PATH  = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
 
-static       UNICODE_STRING REGISTRY_KEY_PATH = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services"
-                                                                    L"\\FileBlockerDriver\\Parameters");
 static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigPath");
 
 typedef struct _FILE_BLOCKER_CONFIGURATION
@@ -61,17 +59,19 @@ static BOOLEAN initUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 }
 
 _Success_(return != FALSE)
-static BOOLEAN getConfigFilePath(_Out_ PUNICODE_STRING config_file_path)
+static BOOLEAN getConfigFilePath(_In_ PUNICODE_STRING registry_key_path,
+                                 _Out_ PUNICODE_STRING config_file_path)
 {
     static CHAR buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
                        (MAX_PATH_LEN + 1) * sizeof(WCHAR)];
 
-    if (not config_file_path)
+    if (not registry_key_path or
+        not config_file_path)
         return FALSE;
 
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
-                               &REGISTRY_KEY_PATH,
+                               registry_key_path,
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
                                NULL,
                                NULL);
@@ -206,12 +206,14 @@ static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
     }
 }
 
-static BOOLEAN readConfigurationFile()
+static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING registry_key_path)
 {
     UNICODE_STRING config_file_path;
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
-                               getConfigFilePath(&config_file_path) ? &config_file_path : &CONFIG_FILE_PATH,
+                               (getConfigFilePath(registry_key_path, &config_file_path)
+                                ? &config_file_path
+                                : &CONFIG_FILE_PATH),
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
                                NULL,
                                NULL);
@@ -298,7 +300,8 @@ static BOOLEAN readConfigurationFile()
     return TRUE;
 }
 
-BOOLEAN initializeFileBlocker()
+_Use_decl_annotations_
+BOOLEAN initializeFileBlocker(_In_ PUNICODE_STRING registry_key_path)
 {
     if (not initUnicodeString(&file_blocker_config.ext_to_block))
         return FALSE;
@@ -315,7 +318,7 @@ BOOLEAN initializeFileBlocker()
 
     RtlCopyUnicodeString(&file_blocker_config.text_to_block, &TEXT_TO_BLOCK);
 
-    readConfigurationFile();
+    readConfigurationFile(registry_key_path);
 
     return TRUE;
 }
