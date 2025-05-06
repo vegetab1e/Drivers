@@ -29,9 +29,10 @@ static FILE_BLOCKER_CONFIGURATION file_blocker_config;
 
 static BOOLEAN initUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 {
+#ifdef PARANOID_MODE
     if (not unicode_string)
         return FALSE;
-
+#endif
     if (unicode_string->Buffer)
     {
         KdPrint(("WARNING: String not empty!\n"));
@@ -64,11 +65,11 @@ static BOOLEAN getConfigFilePath(_In_ PUNICODE_STRING registry_key_path,
 {
     static CHAR buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
                        (MAX_PATH_LEN + 1) * sizeof(WCHAR)];
-
+#ifdef PARANOID_MODE
     if (not registry_key_path or
         not config_file_path)
         return FALSE;
-
+#endif
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
                                registry_key_path,
@@ -206,14 +207,15 @@ static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
     }
 }
 
-static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING registry_key_path)
+static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
 {
-    UNICODE_STRING config_file_path;
+#ifdef PARANOID_MODE
+    if (not config_file_path)
+        return FALSE;
+#endif
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
-                               (getConfigFilePath(registry_key_path, &config_file_path)
-                                ? &config_file_path
-                                : &CONFIG_FILE_PATH),
+                               config_file_path,
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
                                NULL,
                                NULL);
@@ -303,6 +305,9 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING registry_key_path)
 _Use_decl_annotations_
 BOOLEAN initializeFileBlocker(_In_ PUNICODE_STRING registry_key_path)
 {
+    if (not registry_key_path)
+        return FALSE;
+
     if (not initUnicodeString(&file_blocker_config.ext_to_block))
         return FALSE;
     
@@ -318,7 +323,10 @@ BOOLEAN initializeFileBlocker(_In_ PUNICODE_STRING registry_key_path)
 
     RtlCopyUnicodeString(&file_blocker_config.text_to_block, &TEXT_TO_BLOCK);
 
-    readConfigurationFile(registry_key_path);
+    UNICODE_STRING config_file_path;
+    readConfigurationFile(getConfigFilePath(registry_key_path, &config_file_path)
+                          ? &config_file_path
+                          : &CONFIG_FILE_PATH);
 
     return TRUE;
 }
