@@ -31,12 +31,13 @@ FileBlockerDriver.DriverFiles              = 13                ; driver store
 ;; Default install sections
 ;;
 
-[DefaultInstall.NT$ARCH$.10.0...19041]
-OptionDesc         = %ServiceDescription%
+; Windows 10 version 1709 or later
+[DefaultInstall.NT$ARCH$.10.0...16299]
+OptionDesc         = %ServiceDesc%
 CopyFiles          = FileBlockerDriver.DriverFiles,\
                      @%DriverName%.ini
 
-[DefaultInstall.NT$ARCH$.10.0...19041.Services]
+[DefaultInstall.NT$ARCH$.10.0...16299.Services]
 AddService         = %ServiceName%,,FileBlockerDriver.Service
 
 ;
@@ -45,7 +46,7 @@ AddService         = %ServiceName%,,FileBlockerDriver.Service
 
 [FileBlockerDriver.Service]
 DisplayName        = %ServiceName%
-Description        = %ServiceDescription%
+Description        = %ServiceDesc%
 ServiceBinary      = %13%\%DriverName%.sys                     ; %windir%\system32\drivers\
 Dependencies       = "FltMgr"
 ServiceType        = 2                                         ; SERVICE_FILE_SYSTEM_DRIVER
@@ -75,7 +76,7 @@ HKR,"Parameters","ConfigPath",0x00020000,"\SystemRoot\System32\"%DriverName%.ini
 ;;
 
 [DefaultInstall.NT$ARCH$]
-OptionDesc         = %ServiceDescription%
+OptionDesc         = %ServiceDesc%
 CopyFiles          = FileBlockerDriverDownlevel.CopyDriverFiles
 
 [DefaultInstall.NT$ARCH$.Services]
@@ -98,7 +99,7 @@ DelService         = %ServiceName%,0x200                       ; Ensure service 
 
 [FileBlockerDriverDownlevel.Service]
 DisplayName        = %ServiceName%
-Description        = %ServiceDescription%
+Description        = %ServiceDesc%
 ServiceBinary      = %12%\%DriverName%.sys                     ; %windir%\system32\drivers\
 Dependencies       = "FltMgr"
 ServiceType        = 2                                         ; SERVICE_FILE_SYSTEM_DRIVER
@@ -129,7 +130,7 @@ HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
 [Strings]
 ProviderString     = "FileBlockerDriver Provider"
-ServiceDescription = "FileBlockerDriver Minifilter Driver"
+ServiceDesc        = "FileBlockerDriver Minifilter Driver"
 ServiceName        = "FileBlockerDriver"
 DriverName         = "FileBlockerDriver"
 DiskId1            = "FileBlockerDriver Device Installation Disk"
