@@ -31,12 +31,12 @@ FileBlockerDriver.DriverFiles              = 13                ; driver store
 ;; Default install sections
 ;;
 
-[DefaultInstall.NT$ARCH$.10.0...22000]
+[DefaultInstall.NT$ARCH$.10.0...19041]
 OptionDesc         = %ServiceDescription%
 CopyFiles          = FileBlockerDriver.DriverFiles,\
-                     FileBlockerDriver.ConfigFiles
+                     @%DriverName%.ini
 
-[DefaultInstall.NT$ARCH$.10.0...22000.Services]
+[DefaultInstall.NT$ARCH$.10.0...19041.Services]
 AddService         = %ServiceName%,,FileBlockerDriver.Service
 
 ;
@@ -69,9 +69,6 @@ HKR,"Parameters","ConfigPath",0x00020000,"\SystemRoot\System32\"%DriverName%.ini
 
 [FileBlockerDriver.DriverFiles]
 %DriverName%.sys
-
-[FileBlockerDriver.ConfigFiles]
-%DriverName%.ini
 
 ;;
 ;; Downlevel default install sections
