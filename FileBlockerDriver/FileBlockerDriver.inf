@@ -19,11 +19,12 @@ FileBlockerDriver.ini = 1,,
 1 = %DiskId1%,,,
 
 [DestinationDirs]
-FileBlockerDriverDownlevel.DriverFiles = 12                    ; %windir%\system32\drivers
+FileBlockerDriverDownlevel.CopyDriverFiles = 12                ; %windir%\system32\drivers
+FileBlockerDriverDownlevel.DelDriverFiles  = 12                ; %windir%\system32\drivers
 ; DIRID 13 появился в сборке 6.3.9600 (Windows 8.1), а начиная
 ; со сборки 10.0...16299 (Windows 10 version 1709) Microsoft
 ; настоятельно рекомендует использовать именно эту директорию
-FileBlockerDriver.DriverFiles          = 13                    ; driver store
+FileBlockerDriver.DriverFiles              = 13                ; driver store
 
 ;;
 ;; Default install sections
@@ -76,7 +77,7 @@ HKR,"Parameters\Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
 [DefaultInstall.NT$ARCH$]
 OptionDesc         = %ServiceDesc%
-CopyFiles          = FileBlockerDriverDownlevel.DriverFiles
+CopyFiles          = FileBlockerDriverDownlevel.CopyDriverFiles
 
 [DefaultInstall.NT$ARCH$.Services]
 AddService         = %ServiceName%,,FileBlockerDriverDownlevel.Service
@@ -89,7 +90,7 @@ AddService         = %ServiceName%,,FileBlockerDriverDownlevel.Service
 ; начиная со сборки 10.0...18362 (Windows 10 version 1903)
 [DefaultUninstall.NT$ARCH$]
 LegacyUninstall    = 1
-DelFiles           = FileBlockerDriverDownlevel.DriverFiles
+DelFiles           = FileBlockerDriverDownlevel.DelDriverFiles
 
 [DefaultUninstall.NT$ARCH$.Services]
 DelService         = %ServiceName%,0x200                       ; Ensure service is stopped before deleting
@@ -120,7 +121,11 @@ HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
 HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
 HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
-[FileBlockerDriverDownlevel.DriverFiles]
+[FileBlockerDriverDownlevel.CopyDriverFiles]
+%DriverName%.sys
+%DriverName%.ini
+
+[FileBlockerDriverDownlevel.DelDriverFiles]
 %DriverName%.sys
 %DriverName%.ini
 
