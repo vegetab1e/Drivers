@@ -170,13 +170,12 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
         return;
 
     BOOLEAN is_name = TRUE;
-    ULONG string_length = 0;
     PUNICODE_STRING value_pointer = NULL;
     for (ULONG i = 0, j = 0; i < length; ++i)
     {
         if (is_name && buffer[i] == '=')
         {
-            string_length = i - j;
+            CONST ULONG string_length = i - j;
             if (string_length > 0 && string_length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
                 CONST ANSI_STRING name = {
@@ -216,7 +215,7 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
         }
         else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == length))
         {
-            string_length = i - j;
+            CONST ULONG string_length = i - j;
             if (string_length > 0 && string_length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
                 ANSI_STRING value = {
@@ -351,13 +350,13 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-    UNICODE_STRING config_file_path;
-    if (not getConfigFileName(registry_key_path, &config_file_path))
+    UNICODE_STRING config_file_name;
+    if (not getConfigFileName(registry_key_path, &config_file_name))
         goto End;
 
     HANDLE config_file_handle;
     if (not openConfigFile(driver_dir_handle,
-                           &config_file_path,
+                           &config_file_name,
                            &config_file_handle))
         goto End;
 
