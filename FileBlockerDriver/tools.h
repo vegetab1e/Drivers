@@ -1,6 +1,7 @@
 #include <ntdef.h>
 
-BOOLEAN initializeFileBlocker(_In_ PUNICODE_STRING registry_key_path);
+BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
+                              _In_ PUNICODE_STRING registry_key_path);
 VOID uninitializeFileBlocker();
 
 BOOLEAN isRecycleBinPath(_In_reads_bytes_(file_name_len) PWCH file_name,

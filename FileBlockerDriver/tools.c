@@ -17,7 +17,7 @@ static CONST UNICODE_STRING TEXT_TO_BLOCK     = RTL_CONSTANT_STRING(L"This те�
 
 static       UNICODE_STRING CONFIG_FILE_PATH  = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
 
-static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigPath");
+static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigFileName");
 
 typedef struct _FILE_BLOCKER_CONFIGURATION
 {
@@ -59,15 +59,27 @@ static BOOLEAN initUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
     return TRUE;
 }
 
+static VOID freeUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
+{
+    unicode_string->Length = 0;
+    unicode_string->MaximumLength = 0;
+
+    if (unicode_string->Buffer)
+    {
+        ExFreePool(unicode_string->Buffer);
+        unicode_string->Buffer = NULL;
+    }
+}
+
 _Success_(return != FALSE)
-static BOOLEAN getConfigFilePath(_In_ PUNICODE_STRING registry_key_path,
-                                 _Out_ PUNICODE_STRING config_file_path)
+static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
+                                 _Out_ PUNICODE_STRING config_file_name)
 {
     static CHAR buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
                        (MAX_PATH_LEN + 1) * sizeof(WCHAR)];
 #ifdef PARANOID_MODE
     if (not registry_key_path or
-        not config_file_path)
+        not config_file_name)
         return FALSE;
 #endif
     OBJECT_ATTRIBUTES object_attributes;
@@ -115,11 +127,11 @@ static BOOLEAN getConfigFilePath(_In_ PUNICODE_STRING registry_key_path,
         return FALSE;
     }
 
-    config_file_path->Buffer = (PWCHAR)value_info->Data;
-    config_file_path->Length = (USHORT)(value_info->DataLength - sizeof(WCHAR));
-    config_file_path->MaximumLength = config_file_path->Length;
+    config_file_name->Buffer = (PWCHAR)value_info->Data;
+    config_file_name->Length = (USHORT)(value_info->DataLength - sizeof(WCHAR));
+    config_file_name->MaximumLength = config_file_name->Length;
 
-    KdPrint(("Config file path: %wZ\n", config_file_path));
+    KdPrint(("Config file name: %wZ\n", config_file_name));
     return TRUE;
 }
 
@@ -207,22 +219,25 @@ static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
     }
 }
 
-static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
+_Success_(return != FALSE)
+static BOOLEAN openConfigFile(_In_ HANDLE root_dir_handle,
+                              _In_ PUNICODE_STRING config_file_name,
+                              _Out_ PHANDLE config_file_handle)
 {
 #ifdef PARANOID_MODE
-    if (not config_file_path)
+    if (not config_file_name or
+        not config_file_handle)
         return FALSE;
 #endif
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
-                               config_file_path,
+                               config_file_name,
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
-                               NULL,
+                               root_dir_handle,
                                NULL);
 
-    HANDLE file_handle;
     IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = ZwOpenFile(&file_handle,
+    NTSTATUS status = ZwOpenFile(config_file_handle,
                                  FILE_READ_DATA,
                                  &object_attributes,
                                  &io_status_block,
@@ -231,21 +246,26 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
-
         return FALSE;
     }
 
+    return TRUE;
+}
+
+static BOOLEAN readConfigurationFile(_In_ HANDLE config_file_handle)
+{
+    IO_STATUS_BLOCK io_status_block;
     FILE_STANDARD_INFORMATION file_standard_info;
-    status = ZwQueryInformationFile(file_handle,
-                                    &io_status_block,
-                                    &file_standard_info,
-                                    sizeof(file_standard_info),
-                                    FileStandardInformation);
+    NTSTATUS status = ZwQueryInformationFile(config_file_handle,
+                                             &io_status_block,
+                                             &file_standard_info,
+                                             sizeof(file_standard_info),
+                                             FileStandardInformation);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
 
-        ZwClose(file_handle);
+        ZwClose(config_file_handle);
 
         return FALSE;
     }
@@ -254,7 +274,7 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
     {
         KdPrint(("File to big\n"));
 
-        ZwClose(file_handle);
+        ZwClose(config_file_handle);
 
         return FALSE;
     }
@@ -264,7 +284,7 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
     {
         KdPrint(("Failed to allocate memory\n"));
 
-        ZwClose(file_handle);
+        ZwClose(config_file_handle);
         
         return FALSE;
     }
@@ -274,7 +294,7 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
 
     RtlZeroMemory(&io_status_block, sizeof(io_status_block));
 
-    status = ZwReadFile(file_handle,
+    status = ZwReadFile(config_file_handle,
                         NULL,
                         NULL,
                         NULL,
@@ -284,7 +304,7 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
                         &offset,
                         NULL);
 
-    ZwClose(file_handle);
+    ZwClose(config_file_handle);
 
     if (not NT_SUCCESS(status))
     {
@@ -303,9 +323,11 @@ static BOOLEAN readConfigurationFile(_In_ PUNICODE_STRING config_file_path)
 }
 
 _Use_decl_annotations_
-BOOLEAN initializeFileBlocker(_In_ PUNICODE_STRING registry_key_path)
+BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
+                              _In_ PUNICODE_STRING registry_key_path)
 {
-    if (not registry_key_path)
+    if (not driver_object or
+        not registry_key_path)
         return FALSE;
 
     if (not initUnicodeString(&file_blocker_config.ext_to_block))
@@ -315,35 +337,48 @@ BOOLEAN initializeFileBlocker(_In_ PUNICODE_STRING registry_key_path)
 
     if (not initUnicodeString(&file_blocker_config.text_to_block))
     {
-        ExFreePool(file_blocker_config.ext_to_block.Buffer);
-        file_blocker_config.ext_to_block.Buffer = NULL;
+        freeUnicodeString(&file_blocker_config.ext_to_block);
 
         return FALSE;
     }
 
     RtlCopyUnicodeString(&file_blocker_config.text_to_block, &TEXT_TO_BLOCK);
 
-    UNICODE_STRING config_file_path;
-    readConfigurationFile(getConfigFilePath(registry_key_path, &config_file_path)
-                          ? &config_file_path
-                          : &CONFIG_FILE_PATH);
+    HANDLE driver_dir_handle;
+    NTSTATUS status = IoGetDriverDirectory(driver_object,
+                                           DriverDirectoryImage,
+                                           0,
+                                           &driver_dir_handle);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to get driver directory: 0x%08X\n", status));
+        goto End;
+    }
 
-    return TRUE;
+    UNICODE_STRING config_file_path;
+    if (not getConfigFileName(registry_key_path, &config_file_path))
+        goto End;
+
+    HANDLE config_file_handle;
+    if (not openConfigFile(driver_dir_handle,
+                           &config_file_path,
+                           &config_file_handle))
+        goto End;
+
+    if (readConfigurationFile(config_file_handle))
+        return TRUE;
+
+End:
+    freeUnicodeString(&file_blocker_config.ext_to_block);
+    freeUnicodeString(&file_blocker_config.text_to_block);
+
+    return FALSE;
 }
 
 VOID uninitializeFileBlocker()
 {
-    if (file_blocker_config.ext_to_block.Buffer)
-    {
-        ExFreePool(file_blocker_config.ext_to_block.Buffer);
-        file_blocker_config.ext_to_block.Buffer = NULL;
-    }
-
-    if (file_blocker_config.text_to_block.Buffer)
-    {
-        ExFreePool(file_blocker_config.text_to_block.Buffer);
-        file_blocker_config.text_to_block.Buffer = NULL;
-    }
+    freeUnicodeString(&file_blocker_config.ext_to_block);
+    freeUnicodeString(&file_blocker_config.text_to_block);
 }
 
 _Use_decl_annotations_
@@ -432,7 +467,6 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
-
         return FALSE;
     }
 

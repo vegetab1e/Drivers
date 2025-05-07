@@ -127,7 +127,7 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
 {
     driver_object->DriverUnload = driverUnload;
 
-    if (not initializeFileBlocker(registry_key_path))
+    if (not initializeFileBlocker(driver_object, registry_key_path))
     {
         KdPrint(("Initialization failed\n"));
         return STATUS_DEVICE_CONFIGURATION_ERROR;
