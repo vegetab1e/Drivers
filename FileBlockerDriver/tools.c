@@ -484,7 +484,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
                                  FILE_GENERIC_READ,
                                  &object_attributes,
                                  &io_status_block,
-                                 FILE_SHARE_VALID_FLAGS,
+                                 FILE_SHARE_READ | FILE_SHARE_DELETE,
                                  FILE_NON_DIRECTORY_FILE);
     if (not NT_SUCCESS(status))
     {
