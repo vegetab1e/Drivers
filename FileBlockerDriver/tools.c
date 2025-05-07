@@ -27,7 +27,7 @@ typedef struct _FILE_BLOCKER_CONFIGURATION
 
 static FILE_BLOCKER_CONFIGURATION file_blocker_config;
 
-static BOOLEAN initUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
+static BOOLEAN allocUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 {
 #ifdef PARANOID_MODE
     if (not unicode_string)
@@ -61,6 +61,10 @@ static BOOLEAN initUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 
 static VOID freeUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 {
+#ifdef PARANOID_MODE
+    if (not unicode_string)
+        return FALSE;
+#endif
     unicode_string->Length = 0;
     unicode_string->MaximumLength = 0;
 
@@ -69,6 +73,25 @@ static VOID freeUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
         ExFreePool(unicode_string->Buffer);
         unicode_string->Buffer = NULL;
     }
+}
+
+static BOOLEAN initDefaultConfig()
+{
+    if (not allocUnicodeString(&file_blocker_config.ext_to_block))
+        return FALSE;
+
+    RtlCopyUnicodeString(&file_blocker_config.ext_to_block, &EXT_TO_BLOCK);
+
+    if (not allocUnicodeString(&file_blocker_config.text_to_block))
+    {
+        freeUnicodeString(&file_blocker_config.ext_to_block);
+
+        return FALSE;
+    }
+
+    RtlCopyUnicodeString(&file_blocker_config.text_to_block, &TEXT_TO_BLOCK);
+
+    return TRUE;
 }
 
 _Success_(return != FALSE)
@@ -330,19 +353,8 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         not registry_key_path)
         return FALSE;
 
-    if (not initUnicodeString(&file_blocker_config.ext_to_block))
+    if (not initDefaultConfig())
         return FALSE;
-    
-    RtlCopyUnicodeString(&file_blocker_config.ext_to_block, &EXT_TO_BLOCK);
-
-    if (not initUnicodeString(&file_blocker_config.text_to_block))
-    {
-        freeUnicodeString(&file_blocker_config.ext_to_block);
-
-        return FALSE;
-    }
-
-    RtlCopyUnicodeString(&file_blocker_config.text_to_block, &TEXT_TO_BLOCK);
 
     HANDLE driver_dir_handle;
     NTSTATUS status = IoGetDriverDirectory(driver_object,
