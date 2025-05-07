@@ -158,30 +158,31 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     return TRUE;
 }
 
-static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
-                                   _In_ USHORT size)
+static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
+                            _In_ ULONG length)
 {
     static CONST ANSI_STRING names[] = {
         RTL_CONSTANT_STRING("ext_to_block"),
         RTL_CONSTANT_STRING("text_to_block")
     };
 
-    if ((buffer == NULL) || (size == 0))
+    if ((buffer == NULL) || (length == 0))
         return;
 
     BOOLEAN is_name = TRUE;
+    ULONG string_length = 0;
     PUNICODE_STRING value_pointer = NULL;
-    for (USHORT i = 0, j = 0; i < size; ++i)
+    for (ULONG i = 0, j = 0; i < length; ++i)
     {
         if (is_name && buffer[i] == '=')
         {
-            CONST USHORT name_length = i - j;
-            if (name_length)
+            string_length = i - j;
+            if (string_length > 0 && string_length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
                 CONST ANSI_STRING name = {
                     .Buffer = buffer + j,
-                    .Length = name_length,
-                    .MaximumLength = name_length
+                    .Length = (USHORT)string_length,
+                    .MaximumLength = (USHORT)string_length
                 };
 
                 KdPrint(("Parameter name: \"%Z\"\n", name));
@@ -198,10 +199,10 @@ static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
                 do {
                     ++i;
                 }
-                while (i < size && buffer[i] != '\n');
+                while (i < length && buffer[i] != '\n');
 
                 // до начала следующей непустой строки
-                while ((i + 1) < size && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
+                while ((i + 1) < length && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
                 {
                     ++i;
                 }
@@ -213,15 +214,15 @@ static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
             j = i + 1;
             is_name = FALSE;
         }
-        else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == size))
+        else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == length))
         {
-            CONST USHORT value_length = i - j;
-            if (value_length)
+            string_length = i - j;
+            if (string_length > 0 && string_length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
                 ANSI_STRING value = {
                     .Buffer = buffer + j,
-                    .Length = value_length,
-                    .MaximumLength = value_length
+                    .Length = (USHORT)string_length,
+                    .MaximumLength = (USHORT)string_length
                 };
 
                 KdPrint(("Parameter value: \"%Z\"\n", value));
@@ -230,7 +231,7 @@ static VOID parseConfigurationData(_In_reads_bytes_(size) PCCHAR buffer,
             }
 
             // до начала следующей непустой строки
-            while ((i + 1) < size && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
+            while ((i + 1) < length && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
             {
                 ++i;
             }
@@ -275,7 +276,9 @@ static BOOLEAN openConfigFile(_In_ HANDLE root_dir_handle,
     return TRUE;
 }
 
-static BOOLEAN readConfigurationFile(_In_ HANDLE config_file_handle)
+static ULONG readConfigFile(_In_ HANDLE config_file_handle,
+                            _Out_writes_bytes_(length) PCHAR buffer,
+                            _In_ ULONG length)
 {
     IO_STATUS_BLOCK io_status_block;
     FILE_STANDARD_INFORMATION file_standard_info;
@@ -287,33 +290,24 @@ static BOOLEAN readConfigurationFile(_In_ HANDLE config_file_handle)
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
-
-        ZwClose(config_file_handle);
-
-        return FALSE;
+        return 0;
     }
 
-    if (file_standard_info.EndOfFile.QuadPart > MAX_FILE_LEN)
+    if (file_standard_info.EndOfFile.QuadPart == 0)
+    {
+        KdPrint(("Empty file\n"));
+        return 0;
+    }
+
+    if (file_standard_info.EndOfFile.QuadPart > length)
     {
         KdPrint(("File to big\n"));
-
-        ZwClose(config_file_handle);
-
-        return FALSE;
+        return 0;
     }
 
-    PCHAR buffer = MmAllocateNonCachedMemory(file_standard_info.EndOfFile.QuadPart);
-    if (not buffer)
-    {
-        KdPrint(("Failed to allocate memory\n"));
-
-        ZwClose(config_file_handle);
-        
-        return FALSE;
-    }
-
-    LARGE_INTEGER offset;
-    RtlZeroMemory(&offset, sizeof(offset));
+    LARGE_INTEGER offset = {
+        .QuadPart = 0
+    };
 
     RtlZeroMemory(&io_status_block, sizeof(io_status_block));
 
@@ -323,26 +317,16 @@ static BOOLEAN readConfigurationFile(_In_ HANDLE config_file_handle)
                         NULL,
                         &io_status_block,
                         buffer,
-                        (ULONG)file_standard_info.EndOfFile.QuadPart,
+                        length,
                         &offset,
                         NULL);
-
-    ZwClose(config_file_handle);
-
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to read file: 0x%08X\n", status));
-        return FALSE;
+        return 0;
     }
 
-    CONST USHORT num_bytes = (USHORT)io_status_block.Information;
-    KdPrint(("Number of bytes read: %hu\n", num_bytes));
-
-    parseConfigurationData(buffer, num_bytes);
-
-    MmFreeNonCachedMemory(buffer, file_standard_info.EndOfFile.QuadPart);
-
-    return TRUE;
+    return (ULONG)io_status_block.Information;
 }
 
 _Use_decl_annotations_
@@ -377,8 +361,34 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                            &config_file_handle))
         goto End;
 
-    if (readConfigurationFile(config_file_handle))
+    PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN);
+    if (not buffer)
+    {
+        KdPrint(("Failed to allocate memory\n"));
+
+        ZwClose(config_file_handle);
+
+        goto End;
+    }
+
+    CONST ULONG num_bytes = readConfigFile(config_file_handle,
+                                           buffer,
+                                           MAX_FILE_LEN);
+
+    MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
+    ZwClose(config_file_handle);
+
+    if (num_bytes)
+    {
+        KdPrint(("Number of bytes read: %lu\n", num_bytes));
+
+        parseConfigData(buffer, num_bytes);
+
+        KdPrint(("Extension to block: \"%wZ\"\n", file_blocker_config.ext_to_block));
+        KdPrint(("Text to block: \"%wZ\"\n", file_blocker_config.text_to_block));
+
         return TRUE;
+    }
 
 End:
     freeUnicodeString(&file_blocker_config.ext_to_block);
