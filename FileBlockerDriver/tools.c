@@ -15,9 +15,11 @@ static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.B
 static CONST UNICODE_STRING EXT_TO_BLOCK      = RTL_CONSTANT_STRING(L".txt");
 static CONST UNICODE_STRING TEXT_TO_BLOCK     = RTL_CONSTANT_STRING(L"This текст should be blocked!");
 
-static       UNICODE_STRING CONFIG_FILE_PATH  = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
-
+#ifndef USE_DEFAULT_CONFIG_PATH
 static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigFileName");
+#else
+static       UNICODE_STRING CONFIG_FILE_PATH  = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
+#endif
 
 typedef struct _FILE_BLOCKER_CONFIGURATION
 {
@@ -94,6 +96,7 @@ static BOOLEAN initDefaultConfig()
     return TRUE;
 }
 
+#ifndef USE_DEFAULT_CONFIG_PATH
 _Success_(return != FALSE)
 static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
                                  _Out_ PUNICODE_STRING config_file_name)
@@ -157,6 +160,7 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     KdPrint(("Config file name: %wZ\n", config_file_name));
     return TRUE;
 }
+#endif
 
 static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
                             _In_ ULONG length)
@@ -243,7 +247,7 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
 }
 
 _Success_(return != FALSE)
-static BOOLEAN openConfigFile(_In_ HANDLE root_dir_handle,
+static BOOLEAN openConfigFile(_In_opt_ HANDLE root_directory_handle,
                               _In_ PUNICODE_STRING config_file_name,
                               _Out_ PHANDLE config_file_handle)
 {
@@ -256,7 +260,7 @@ static BOOLEAN openConfigFile(_In_ HANDLE root_dir_handle,
     InitializeObjectAttributes(&object_attributes,
                                config_file_name,
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
-                               root_dir_handle,
+                               root_directory_handle,
                                NULL);
 
     IO_STATUS_BLOCK io_status_block;
@@ -343,18 +347,12 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     if (not initDefaultConfig())
         return FALSE;
 
-#ifdef USE_DEFAULT_CONFIG_PATH
-    HANDLE config_file_handle;
-    if (not openConfigFile(NULL,
-                           &CONFIG_FILE_PATH,
-                           &config_file_handle))
-        goto End;
-#else
-    HANDLE driver_dir_handle;
+#ifndef USE_DEFAULT_CONFIG_PATH
+    HANDLE root_directory_handle;
     NTSTATUS status = IoGetDriverDirectory(driver_object,
                                            DriverDirectoryImage,
                                            0,
-                                           &driver_dir_handle);
+                                           &root_directory_handle);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get driver directory: 0x%08X\n", status));
@@ -363,18 +361,39 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
     UNICODE_STRING config_file_name;
     if (not getConfigFileName(registry_key_path, &config_file_name))
+    {
+        ZwClose(root_directory_handle);
+
         goto End;
+    }
+#else
+    KdPrint(("Config file path: %wZ\n", CONFIG_FILE_PATH));
+#endif
 
     HANDLE config_file_handle;
-    if (not openConfigFile(driver_dir_handle,
+    if (not openConfigFile(
+#ifndef USE_DEFAULT_CONFIG_PATH
+                           root_directory_handle,
                            &config_file_name,
-                           &config_file_handle))
-        goto End;
+#else
+                           NULL,
+                           &CONFIG_FILE_PATH,
 #endif
+                           &config_file_handle))
+    {
+#ifndef USE_DEFAULT_CONFIG_PATH
+        ZwClose(root_directory_handle);
+#endif
+
+        goto End;
+    }
 
     if (not checkConfigFile(config_file_handle))
     {
         ZwClose(config_file_handle);
+#ifndef USE_DEFAULT_CONFIG_PATH
+        ZwClose(root_directory_handle);
+#endif
 
         goto End;
     }
@@ -385,6 +404,9 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to allocate memory\n"));
 
         ZwClose(config_file_handle);
+#ifndef USE_DEFAULT_CONFIG_PATH
+        ZwClose(root_directory_handle);
+#endif
 
         goto End;
     }
@@ -394,6 +416,9 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                                            MAX_FILE_LEN);
 
     ZwClose(config_file_handle);
+#ifndef USE_DEFAULT_CONFIG_PATH
+    ZwClose(root_directory_handle);
+#endif
 
     if (num_bytes)
     {
