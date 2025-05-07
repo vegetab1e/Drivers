@@ -19,22 +19,24 @@ FileBlockerDriver.ini = 1,,
 1 = %DiskId1%,,,
 
 [DestinationDirs]
-DefaultDestDir                             = 11                ; %windir%\system32
-FileBlockerDriverDownlevel.CopyDriverFiles = 12                ; %windir%\system32\drivers
-FileBlockerDriverDownlevel.DelDriverFiles  = 12                ; %windir%\system32\drivers
-FileBlockerDriver.DriverFiles              = 13                ; driver store
+DefaultDestDir                         = 11                    ; %windir%\system32
+FileBlockerDriverDownlevel.DriverFiles = 12                    ; %windir%\system32\drivers
+; DIRID 13 появился в сборке 6.3.9600 (Windows 8.1), а начиная
+; со сборки 10.0...16299 (Windows 10 version 1709) Microsoft
+; настоятельно рекомендует использовать именно эту директорию
+FileBlockerDriver.DriverFiles          = 13                    ; driver store
 
 ;;
 ;; Default install sections
 ;;
 
-; Windows 11 version 21H2
-[DefaultInstall.NT$ARCH$.10.0...22000]
+; Windows 11 version 24H2
+[DefaultInstall.NT$ARCH$.10.0...26100]
 OptionDesc         = %ServiceDesc%
 CopyFiles          = FileBlockerDriver.DriverFiles,\
                      @%DriverName%.ini
 
-[DefaultInstall.NT$ARCH$.10.0...22000.Services]
+[DefaultInstall.NT$ARCH$.10.0...26100.Services]
 AddService         = %ServiceName%,,FileBlockerDriver.Service
 
 ;
@@ -57,6 +59,9 @@ AddReg             = FileBlockerDriver.AddRegistry,\
 ; Registry modifications
 ;
 
+; Следующие значения должны находиться
+; в подразделе "Parameters" начиная со
+; сборки 10.0...26100 (Windows 11 24H2)
 [FileBlockerDriver.AddRegistry]
 HKR,"Parameters","SupportedFeatures",0x00010001,0x3
 HKR,"Parameters\Instances","DefaultInstance",0x00000000,%DefaultInstance%
@@ -72,7 +77,7 @@ HKR,"Parameters\Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
 [DefaultInstall.NT$ARCH$]
 OptionDesc         = %ServiceDesc%
-CopyFiles          = FileBlockerDriverDownlevel.CopyDriverFiles,\
+CopyFiles          = FileBlockerDriverDownlevel.DriverFiles,\
                      @%DriverName%.ini
 
 [DefaultInstall.NT$ARCH$.Services]
@@ -82,9 +87,11 @@ AddService         = %ServiceName%,,FileBlockerDriverDownlevel.Service
 ;; Downlevel default uninstall sections
 ;;
 
+; Разделы DefaultUninstall и DefaultUninstall.Services запрещены
+; начиная со сборки 10.0...18362 (Windows 10 version 1903)
 [DefaultUninstall.NT$ARCH$]
 LegacyUninstall    = 1
-DelFiles           = FileBlockerDriverDownlevel.DelDriverFiles
+DelFiles           = FileBlockerDriverDownlevel.DriverFiles
 
 [DefaultUninstall.NT$ARCH$.Services]
 DelService         = %ServiceName%,0x200                       ; Ensure service is stopped before deleting
@@ -115,10 +122,7 @@ HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
 HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
 HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 
-[FileBlockerDriverDownlevel.CopyDriverFiles]
-%DriverName%.sys
-
-[FileBlockerDriverDownlevel.DelDriverFiles]
+[FileBlockerDriverDownlevel.DriverFiles]
 %DriverName%.sys
 
 ;;

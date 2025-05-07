@@ -59,3 +59,5 @@
 ![screenshot](doc/win11_26100.PNG)
 
 ***Минимальная поддерживаемая версия ОС - Windows 10 build 19041***. В версиях младше работать не будет из-за используемой в коде функции [`ExAllocatePool2`](https://www.learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exallocatepool2).
+
+В Windows 11 version 24H2 (build 26100) при удалении драйвера файл `FileBlockerDriver.ini` не будет удалён из директории `\SystemRoot\System32`.
