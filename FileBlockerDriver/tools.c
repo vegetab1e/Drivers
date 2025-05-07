@@ -339,6 +339,13 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     if (not initDefaultConfig())
         return FALSE;
 
+#ifdef USE_DEFAULT_CONFIG_PATH
+    HANDLE config_file_handle;
+    if (not openConfigFile(NULL,
+                           &CONFIG_FILE_PATH,
+                           &config_file_handle))
+        goto End;
+#else
     HANDLE driver_dir_handle;
     NTSTATUS status = IoGetDriverDirectory(driver_object,
                                            DriverDirectoryImage,
@@ -359,6 +366,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                            &config_file_name,
                            &config_file_handle))
         goto End;
+#endif
 
     PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN);
     if (not buffer)
