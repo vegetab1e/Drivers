@@ -275,9 +275,7 @@ static BOOLEAN openConfigFile(_In_ HANDLE root_dir_handle,
     return TRUE;
 }
 
-static ULONG readConfigFile(_In_ HANDLE config_file_handle,
-                            _Out_writes_bytes_(length) PCHAR buffer,
-                            _In_ ULONG length)
+static BOOLEAN checkConfigFile(_In_ HANDLE config_file_handle)
 {
     IO_STATUS_BLOCK io_status_block;
     FILE_STANDARD_INFORMATION file_standard_info;
@@ -289,36 +287,42 @@ static ULONG readConfigFile(_In_ HANDLE config_file_handle,
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
-        return 0;
+        return FALSE;
     }
 
     if (file_standard_info.EndOfFile.QuadPart == 0)
     {
         KdPrint(("Empty file\n"));
-        return 0;
+        return FALSE;
     }
 
-    if (file_standard_info.EndOfFile.QuadPart > length)
+    if (file_standard_info.EndOfFile.QuadPart > MAX_FILE_LEN)
     {
         KdPrint(("File to big\n"));
-        return 0;
+        return FALSE;
     }
 
+    return TRUE;
+}
+
+static ULONG readConfigFile(_In_ HANDLE config_file_handle,
+                            _Out_writes_bytes_(length) PCHAR buffer,
+                            _In_ ULONG length)
+{
     LARGE_INTEGER offset = {
         .QuadPart = 0
     };
 
-    RtlZeroMemory(&io_status_block, sizeof(io_status_block));
-
-    status = ZwReadFile(config_file_handle,
-                        NULL,
-                        NULL,
-                        NULL,
-                        &io_status_block,
-                        buffer,
-                        length,
-                        &offset,
-                        NULL);
+    IO_STATUS_BLOCK io_status_block;
+    NTSTATUS status = ZwReadFile(config_file_handle,
+                                 NULL,
+                                 NULL,
+                                 NULL,
+                                 &io_status_block,
+                                 buffer,
+                                 length,
+                                 &offset,
+                                 NULL);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to read file: 0x%08X\n", status));
@@ -367,6 +371,13 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                            &config_file_handle))
         goto End;
 #endif
+
+    if (not checkConfigFile(config_file_handle))
+    {
+        ZwClose(config_file_handle);
+
+        goto End;
+    }
 
     PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN);
     if (not buffer)
