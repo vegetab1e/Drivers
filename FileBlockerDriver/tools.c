@@ -1,4 +1,5 @@
 #include <ntddk.h>
+#include <ntstrsafe.h>
 
 #include <iso646.h>
 
@@ -148,7 +149,7 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     status = ZwQueryValueKey(key_handle,
                              &VALUE_ENTRY_NAME,
                              KeyValuePartialInformation,
-                             &buffer,
+                             buffer,
                              length,
                              &length);
 
@@ -179,6 +180,60 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     config_file_name->MaximumLength = config_file_name->Length;
 
     KdPrint(("Config file name: %wZ\n", config_file_name));
+    return TRUE;
+}
+
+_Success_(return != FALSE)
+static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
+                                 _In_ PCUNICODE_STRING config_file_name,
+                                 _Out_ PUNICODE_STRING config_file_path)
+{
+    static CHAR buffer[sizeof(FILE_NAME_INFORMATION) +
+                       MAX_PATH_LEN * sizeof(WCHAR)];
+#ifdef PARANOID_MODE
+    if (not config_file_name or
+        not config_file_path)
+        return FALSE;
+#endif
+    IO_STATUS_BLOCK io_status_block;
+    NTSTATUS status = ZwQueryInformationFile(root_directory_handle,
+                                             &io_status_block,
+                                             buffer,
+                                             sizeof(buffer),
+                                             FileNameInformation);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to get file info: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    PFILE_NAME_INFORMATION file_name_info = (PFILE_NAME_INFORMATION)buffer;
+    UNICODE_STRING output_string = {
+        .Buffer = file_name_info->FileName,
+        .Length = (USHORT)file_name_info->FileNameLength,
+        .MaximumLength = (USHORT)(sizeof(buffer) - sizeof(FILE_NAME_INFORMATION))
+    };
+
+    KdPrint(("Config file root directory: \"%wZ\"\n", &output_string));
+
+    status = RtlUnicodeStringCopyString(&output_string, L"\\");
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to copy string: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    status = RtlUnicodeStringCat(&output_string, config_file_name);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to concatenate strings: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    KdPrint(("Config file path: \"%wZ\"\n", &output_string));
+
+    *config_file_path = output_string;
+
     return TRUE;
 }
 #endif
@@ -387,9 +442,25 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
         goto End;
     }
+
+#ifndef NDEBUG
+    // Можно использовать в функции
+    // openConfigFile(), тоже самое
+    // происходит при использовании
+    // RootDirectory в ZwOpenFile()!
+    UNICODE_STRING config_file_path;
+    if (not getConfigFilePath(root_directory_handle,
+                              &config_file_name,
+                              &config_file_path))
+    {
+        ZwClose(root_directory_handle);
+
+        goto End;
+    }
+#endif // !NDEBUG
 #else
     KdPrint(("Config file path: %wZ\n", &CONFIG_FILE_PATH));
-#endif
+#endif // !USE_DEFAULT_CONFIG_PATH
 
     HANDLE config_file_handle;
     if (not openConfigFile(
