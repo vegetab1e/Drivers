@@ -1,7 +1,10 @@
-#include <ntddk.h>
-#ifdef DO_NOT_USE_ROOT_DIRECTORY
+#ifdef USE_FULL_CONFIG_PATH
+#include <ntifs.h>
 #include <ntstrsafe.h>
 #endif
+
+#include <ntddk.h>
+
 #include <iso646.h>
 
 #include "tools.h"
@@ -185,41 +188,57 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
 }
 #endif
 
-#ifdef DO_NOT_USE_ROOT_DIRECTORY
+#ifdef USE_FULL_CONFIG_PATH
 _Success_(return != FALSE)
 static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
                                  _In_ PCUNICODE_STRING config_file_name,
                                  _Out_ PUNICODE_STRING config_file_path)
 {
-    static CHAR buffer[sizeof(FILE_NAME_INFORMATION) +
-                       MAX_PATH_LEN * sizeof(WCHAR)];
+    static CHAR buffer[sizeof(OBJECT_NAME_INFORMATION) +
+                       (MAX_PATH_LEN + 1) * sizeof(WCHAR)];
 #ifdef PARANOID_MODE
     if (not config_file_name or
         not config_file_path)
         return FALSE;
 #endif
-    IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = ZwQueryInformationFile(root_directory_handle,
-                                             &io_status_block,
-                                             buffer,
-                                             sizeof(buffer),
-                                             FileNameInformation);
+    PFILE_OBJECT root_directory_object;
+    NTSTATUS status = ObReferenceObjectByHandle(root_directory_handle,
+                                                GENERIC_READ,
+                                                *IoFileObjectType,
+                                                KernelMode,
+                                                &root_directory_object,
+                                                NULL);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to get file info: 0x%08X\n", status));
+        KdPrint(("Failed to get directory object: 0x%08X\n", status));
         return FALSE;
     }
 
-    PFILE_NAME_INFORMATION file_name_info = (PFILE_NAME_INFORMATION)buffer;
+    KdPrint(("Root directory name: \"%wZ\"\n", &root_directory_object->FileName));
+
+    ULONG length;
+    status = ObQueryNameString(root_directory_object->DeviceObject,
+                               (POBJECT_NAME_INFORMATION)buffer,
+                               sizeof(buffer),
+                               &length);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to query device name: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    POBJECT_NAME_INFORMATION object_name_info = (POBJECT_NAME_INFORMATION)buffer;
+
+    KdPrint(("Device name: \"%wZ\"\n", &object_name_info->Name));
+
     UNICODE_STRING output_string = {
-        .Buffer = file_name_info->FileName,
-        .Length = (USHORT)file_name_info->FileNameLength,
-        .MaximumLength = (USHORT)(sizeof(buffer) - sizeof(FILE_NAME_INFORMATION))
+        .Buffer = object_name_info->Name.Buffer,
+        .Length = object_name_info->Name.Length,
+        .MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION))
     };
 
-    KdPrint(("Config file root directory: \"%wZ\"\n", &output_string));
-
-    if (not NT_SUCCESS(status = RtlUnicodeStringCatString(&output_string, L"\\")) or
+    if (not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, &root_directory_object->FileName)) or
+        not NT_SUCCESS(status = RtlUnicodeStringCatString(&output_string, L"\\")) or
         not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, config_file_name)))
     {
         KdPrint(("Failed to concatenate strings: 0x%08X\n", status));
@@ -439,7 +458,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-#ifdef DO_NOT_USE_ROOT_DIRECTORY
+#ifdef USE_FULL_CONFIG_PATH
     // Можно использовать в функции
     // openConfigFile(), тоже самое
     // происходит при использовании
@@ -453,21 +472,21 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
         goto End;
     }
-#endif // DO_NOT_USE_ROOT_DIRECTORY
+#endif // USE_FULL_CONFIG_PATH
 #else
     KdPrint(("Config file path: %wZ\n", &CONFIG_FILE_PATH));
 #endif // !USE_DEFAULT_CONFIG_PATH
 
     HANDLE config_file_handle;
     if (not openConfigFile(
-#if defined(USE_DEFAULT_CONFIG_PATH) || defined(DO_NOT_USE_ROOT_DIRECTORY)
+#if defined(USE_DEFAULT_CONFIG_PATH) || defined(USE_FULL_CONFIG_PATH)
                            NULL,
 #else
                            root_directory_handle,
 #endif
 #if defined(USE_DEFAULT_CONFIG_PATH)
                            &CONFIG_FILE_PATH,
-#elif defined(DO_NOT_USE_ROOT_DIRECTORY)
+#elif defined(USE_FULL_CONFIG_PATH)
                            &config_file_path,
 #else
                            &config_file_name,
