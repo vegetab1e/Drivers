@@ -74,6 +74,7 @@
     <OutDir>bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>build\$(Platform)\$(Configuration)\</IntDir>
     <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
+    <Inf2CatVerbose>true</Inf2CatVerbose>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -90,12 +91,17 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DriverSign>
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+      <AdditionalOptions>/tr http://timestamp.digicert.com /td SHA256 %(AdditionalOptions)</AdditionalOptions>
     </DriverSign>
     <ClCompile />
     <Link>
       <EntryPointSymbol>driverEntry</EntryPointSymbol>
       <AdditionalDependencies>FltMgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile />
+    <ClCompile>
+      <PreprocessorDefinitions>USE_FULL_CONFIG_PATH;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DriverSign>

@@ -1,3 +1,4 @@
+// Порядок подключения заголовочных файлов важен!
 #if !defined(USE_DEFAULT_CONFIG_PATH) && defined(USE_FULL_CONFIG_PATH)
 #include <ntifs.h>
 #include <ntstrsafe.h>
@@ -237,8 +238,6 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     };
 
     // Возможно в FILE_OBJECT имя составное и начало имени в поле RelatedFileObject->FileName.
-    // Получить соответсвие символьной ссылки (буквы) имени DEVICE_OBJECT
-    // для диска можно с помощью функции ZwQuerySymbolicLinkObject().
     if (not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, &root_directory_object->FileName)) or
         not NT_SUCCESS(status = RtlUnicodeStringCatString(&output_string, L"\\")) or
         not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, config_file_name)))
@@ -467,14 +466,10 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     }
 
 #ifdef USE_FULL_CONFIG_PATH
-    // Можно использовать в функции
-    // openConfigFile(), тоже самое
-    // происходит при использовании
-    // RootDirectory в ZwOpenFile()!
     UNICODE_STRING config_file_path;
-    BOOLEAN result = getConfigFilePath(root_directory_handle,
-                                       &config_file_name,
-                                       &config_file_path);
+    CONST BOOLEAN result = getConfigFilePath(root_directory_handle,
+                                             &config_file_name,
+                                             &config_file_path);
 
     ZwClose(root_directory_handle);
 
