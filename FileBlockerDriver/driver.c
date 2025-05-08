@@ -235,6 +235,9 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
 {
     UNREFERENCED_PARAMETER(filter_objects);
     UNREFERENCED_PARAMETER(flags);
+#ifdef NDEBUG
+    UNREFERENCED_PARAMETER(volume_filesystem_type);
+#endif
 
     PAGED_CODE();
 
