@@ -1,4 +1,4 @@
-#ifdef USE_FULL_CONFIG_PATH
+#if !defined(USE_DEFAULT_CONFIG_PATH) && defined(USE_FULL_CONFIG_PATH)
 #include <ntifs.h>
 #include <ntstrsafe.h>
 #endif
@@ -186,7 +186,6 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     KdPrint(("Config file name: \"%wZ\"\n", config_file_name));
     return TRUE;
 }
-#endif
 
 #ifdef USE_FULL_CONFIG_PATH
 _Success_(return != FALSE)
@@ -254,7 +253,8 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 
     return TRUE;
 }
-#endif
+#endif // USE_FULL_CONFIG_PATH
+#endif // !USE_DEFAULT_CONFIG_PATH
 
 static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
                             _In_ ULONG length)
@@ -434,9 +434,14 @@ _Use_decl_annotations_
 BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                               _In_ PUNICODE_STRING registry_key_path)
 {
+#ifdef USE_DEFAULT_CONFIG_PATH
+    UNREFERENCED_PARAMETER(driver_object);
+    UNREFERENCED_PARAMETER(registry_key_path);
+#else
     if (not driver_object or
         not registry_key_path)
         return FALSE;
+#endif
 
     if (not initDefaultConfig())
         return FALSE;
@@ -467,14 +472,15 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     // происходит при использовании
     // RootDirectory в ZwOpenFile()!
     UNICODE_STRING config_file_path;
-    if (not getConfigFilePath(root_directory_handle,
-                              &config_file_name,
-                              &config_file_path))
-    {
-        ZwClose(root_directory_handle);
+    BOOLEAN result = getConfigFilePath(root_directory_handle,
+                                       &config_file_name,
+                                       &config_file_path);
 
+    ZwClose(root_directory_handle);
+
+    if (not result)
         goto End;
-    }
+    
 #endif // USE_FULL_CONFIG_PATH
 #else
     KdPrint(("Config file path: %wZ\n", &CONFIG_FILE_PATH));
@@ -482,10 +488,10 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
     HANDLE config_file_handle;
     if (not openConfigFile(
-#if defined(USE_DEFAULT_CONFIG_PATH) || defined(USE_FULL_CONFIG_PATH)
-                           NULL,
-#else
+#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
                            root_directory_handle,
+#else
+                           NULL,
 #endif
 #if defined(USE_DEFAULT_CONFIG_PATH)
                            &CONFIG_FILE_PATH,
@@ -496,7 +502,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 #endif
                            &config_file_handle))
     {
-#ifndef USE_DEFAULT_CONFIG_PATH
+#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
         ZwClose(root_directory_handle);
 #endif
 
@@ -506,7 +512,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     if (not checkConfigFile(config_file_handle))
     {
         ZwClose(config_file_handle);
-#ifndef USE_DEFAULT_CONFIG_PATH
+#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
         ZwClose(root_directory_handle);
 #endif
 
@@ -519,7 +525,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to allocate memory\n"));
 
         ZwClose(config_file_handle);
-#ifndef USE_DEFAULT_CONFIG_PATH
+#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
         ZwClose(root_directory_handle);
 #endif
 
@@ -531,7 +537,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                                            MAX_FILE_LEN);
 
     ZwClose(config_file_handle);
-#ifndef USE_DEFAULT_CONFIG_PATH
+#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
     ZwClose(root_directory_handle);
 #endif
 
