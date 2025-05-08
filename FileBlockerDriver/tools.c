@@ -216,15 +216,8 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 
     KdPrint(("Config file root directory: \"%wZ\"\n", &output_string));
 
-    status = RtlUnicodeStringCopyString(&output_string, L"\\");
-    if (not NT_SUCCESS(status))
-    {
-        KdPrint(("Failed to copy string: 0x%08X\n", status));
-        return FALSE;
-    }
-
-    status = RtlUnicodeStringCat(&output_string, config_file_name);
-    if (not NT_SUCCESS(status))
+    if (not NT_SUCCESS(status = RtlUnicodeStringCatString(&output_string, L"\\")) or
+        not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, config_file_name)))
     {
         KdPrint(("Failed to concatenate strings: 0x%08X\n", status));
         return FALSE;
