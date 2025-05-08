@@ -183,7 +183,7 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     config_file_name->Length = (USHORT)(value_info->DataLength - sizeof(WCHAR));
     config_file_name->MaximumLength = config_file_name->Length;
 
-    KdPrint(("Config file name: %wZ\n", config_file_name));
+    KdPrint(("Config file name: \"%wZ\"\n", config_file_name));
     return TRUE;
 }
 #endif
@@ -237,6 +237,9 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
         .MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION))
     };
 
+    // Возможно в FILE_OBJECT имя составное и начало имени в поле RelatedFileObject->FileName.
+    // Получить соответсвие символьной ссылки (буквы) имени DEVICE_OBJECT
+    // для диска можно с помощью функции ZwQuerySymbolicLinkObject().
     if (not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, &root_directory_object->FileName)) or
         not NT_SUCCESS(status = RtlUnicodeStringCatString(&output_string, L"\\")) or
         not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, config_file_name)))
