@@ -151,6 +151,8 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     }
 
     ULONG length = sizeof(buffer);
+    // Можно и не чистить память
+    RtlZeroMemory(buffer, length);
     status = ZwQueryValueKey(key_handle,
                              &VALUE_ENTRY_NAME,
                              KeyValuePartialInformation,
@@ -216,10 +218,12 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 
     KdPrint(("Root directory name: \"%wZ\"\n", &root_directory_object->FileName));
 
-    ULONG length;
+    ULONG length = sizeof(buffer);
+    // Можно и не чистить память
+    RtlZeroMemory(buffer, length);
     status = ObQueryNameString(root_directory_object->DeviceObject,
                                (POBJECT_NAME_INFORMATION)buffer,
-                               sizeof(buffer),
+                               length,
                                &length);
     if (not NT_SUCCESS(status))
     {
