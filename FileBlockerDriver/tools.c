@@ -743,3 +743,43 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
     return should_block;
 }
+
+BOOLEAN checkOsVersion()
+{
+    RTL_OSVERSIONINFOW os_version_info = {
+        .dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOW)
+    };
+
+    NTSTATUS status = RtlGetVersion(&os_version_info);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to get OS version: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    CHAR buffer[MAX_STRING_LEN * sizeof(WCHAR)];
+    UNICODE_STRING os_version = {
+        .Buffer = (PWCHAR)buffer,
+        .Length = 0,
+        .MaximumLength = sizeof(buffer)
+    };
+
+    status = RtlUnicodeStringPrintf(&os_version,
+                                    L"%lu.%lu.%lu",
+                                    os_version_info.dwMajorVersion,
+                                    os_version_info.dwMinorVersion,
+                                    os_version_info.dwBuildNumber);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to create formatted string: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    KdPrint(("OS version: %wZ\n", &os_version));
+
+    if (os_version_info.dwMajorVersion < 10UL or
+        os_version_info.dwBuildNumber  < 19041UL)
+        return FALSE;
+
+    return TRUE;
+}

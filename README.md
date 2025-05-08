@@ -62,4 +62,4 @@
 
 ![screenshot](doc/win11_26100.PNG)
 
-***Минимальная поддерживаемая версия ОС - Windows 10 build 19041***. В версиях младше работать не будет из-за используемой в коде функции [`ExAllocatePool2`](https://www.learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exallocatepool2). Планирую добавить проверку версии ОС при загрузке драйвера, а также логирование ошибок.
+***Минимальная поддерживаемая версия ОС - Windows 10 build 19041***. В версиях младше работать не будет из-за используемой в коде функции [`ExAllocatePool2`](https://www.learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exallocatepool2). В коде есть проверка версии ОС.

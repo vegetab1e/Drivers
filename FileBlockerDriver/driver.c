@@ -127,6 +127,12 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
 {
     driver_object->DriverUnload = driverUnload;
 
+    if (not checkOsVersion())
+    {
+        KdPrint(("Failed to check OS version\n"));
+        return STATUS_DRIVER_INTERNAL_ERROR;
+    }
+
     if (not initializeFileBlocker(driver_object, registry_key_path))
     {
         KdPrint(("Initialization failed\n"));

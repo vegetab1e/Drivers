@@ -9,3 +9,5 @@ BOOLEAN isRecycleBinPath(_In_reads_bytes_(file_name_len) PWCH file_name,
 
 BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name);
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name);
+
+BOOLEAN checkOsVersion();
