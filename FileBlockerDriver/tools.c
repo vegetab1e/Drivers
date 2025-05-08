@@ -179,13 +179,13 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
     {
         if (is_name && buffer[i] == '=')
         {
-            CONST ULONG string_length = i - j;
-            if (string_length > 0 && string_length <= MAX_STRING_LEN * sizeof(WCHAR))
+            CONST ULONG name_length = i - j;
+            if (name_length > 0 && name_length <= MAX_STRING_LEN)
             {
                 CONST ANSI_STRING name = {
                     .Buffer = buffer + j,
-                    .Length = (USHORT)string_length,
-                    .MaximumLength = (USHORT)string_length
+                    .Length = (USHORT)name_length,
+                    .MaximumLength = (USHORT)name_length
                 };
 
                 KdPrint(("Parameter name: \"%Z\"\n", name));
@@ -219,18 +219,18 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
         }
         else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == length))
         {
-            CONST ULONG string_length = i - j;
-            if (string_length > 0 && string_length <= MAX_STRING_LEN * sizeof(WCHAR))
+            CONST ULONG value_length = ((buffer[i] != '\n' && (i + 1) == length) ? (i + 1) : i) - j;
+            if (value_length > 0 && value_length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
-                ANSI_STRING value = {
+                UTF8_STRING value = {
                     .Buffer = buffer + j,
-                    .Length = (USHORT)string_length,
-                    .MaximumLength = (USHORT)string_length
+                    .Length = (USHORT)value_length,
+                    .MaximumLength = (USHORT)value_length
                 };
 
-                KdPrint(("Parameter value: \"%Z\"\n", value));
-
-                RtlAnsiStringToUnicodeString(value_pointer, &value, FALSE);
+                RtlUTF8StringToUnicodeString(value_pointer, &value, FALSE);
+                
+                KdPrint(("Parameter value: \"%wZ\"\n", value_pointer));
             }
 
             // до начала следующей непустой строки
@@ -596,14 +596,14 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
         return FALSE;
     }
     
-    ANSI_STRING ansi_string = {
+    UTF8_STRING utf8_string = {
         .Buffer = (PCHAR)base_address,
         .Length = (USHORT)max_section_size.QuadPart,
-        .MaximumLength = ansi_string.Length
+        .MaximumLength = utf8_string.Length
     };
     BOOLEAN should_block = FALSE;
     UNICODE_STRING unicode_string;
-    status = RtlAnsiStringToUnicodeString(&unicode_string, &ansi_string, TRUE);
+    status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
     if (NT_SUCCESS(status))
     {
         should_block = RtlPrefixUnicodeString(&file_blocker_config.text_to_block,
