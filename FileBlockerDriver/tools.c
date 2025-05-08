@@ -1,6 +1,7 @@
 #include <ntddk.h>
+#ifdef DO_NOT_USE_ROOT_DIRECTORY
 #include <ntstrsafe.h>
-
+#endif
 #include <iso646.h>
 
 #include "tools.h"
@@ -13,7 +14,7 @@
 
 static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
 
-static CONST UTF8_STRING    EXT_TO_BLOCK      = RTL_CONSTANT_STRING(".тxt");
+static CONST UTF8_STRING    EXT_TO_BLOCK      = RTL_CONSTANT_STRING(".txt");
 static CONST UTF8_STRING    TEXT_TO_BLOCK     = RTL_CONSTANT_STRING("This текст should be blocked!");
 
 #ifndef USE_DEFAULT_CONFIG_PATH
@@ -182,7 +183,9 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     KdPrint(("Config file name: %wZ\n", config_file_name));
     return TRUE;
 }
+#endif
 
+#ifdef DO_NOT_USE_ROOT_DIRECTORY
 _Success_(return != FALSE)
 static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
                                  _In_ PCUNICODE_STRING config_file_name,
@@ -436,7 +439,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-#ifndef NDEBUG
+#ifdef DO_NOT_USE_ROOT_DIRECTORY
     // Можно использовать в функции
     // openConfigFile(), тоже самое
     // происходит при использовании
@@ -450,19 +453,24 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
         goto End;
     }
-#endif // !NDEBUG
+#endif // DO_NOT_USE_ROOT_DIRECTORY
 #else
     KdPrint(("Config file path: %wZ\n", &CONFIG_FILE_PATH));
 #endif // !USE_DEFAULT_CONFIG_PATH
 
     HANDLE config_file_handle;
     if (not openConfigFile(
-#ifndef USE_DEFAULT_CONFIG_PATH
-                           root_directory_handle,
-                           &config_file_name,
-#else
+#if defined(USE_DEFAULT_CONFIG_PATH) || defined(DO_NOT_USE_ROOT_DIRECTORY)
                            NULL,
+#else
+                           root_directory_handle,
+#endif
+#if defined(USE_DEFAULT_CONFIG_PATH)
                            &CONFIG_FILE_PATH,
+#elif defined(DO_NOT_USE_ROOT_DIRECTORY)
+                           &config_file_path,
+#else
+                           &config_file_name,
 #endif
                            &config_file_handle))
     {
