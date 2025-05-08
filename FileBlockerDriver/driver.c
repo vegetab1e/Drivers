@@ -384,10 +384,10 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 
     if (data->Iopb->TargetFileObject)
         KdPrint(("[FLT_CALLBACK_DATA] FileName: %wZ\n",
-                 data->Iopb->TargetFileObject->FileName));
+                 &data->Iopb->TargetFileObject->FileName));
     if (filter_objects->FileObject)
         KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ\n",
-                 filter_objects->FileObject->FileName));
+                 &filter_objects->FileObject->FileName));
     
     if (data->Iopb->MajorFunction == IRP_MJ_CREATE)
     {
@@ -438,7 +438,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 
     if (isTextBlocked(file_name_info->Name))
     {
-        KdPrint(("Blocking operation on file: %wZ\n", file_name_info->Name));
+        KdPrint(("Blocking operation on file: %wZ\n", &file_name_info->Name));
 
         FltReleaseFileNameInformation(file_name_info);
                 

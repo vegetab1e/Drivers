@@ -12,8 +12,8 @@
 
 static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
 
-static CONST UNICODE_STRING EXT_TO_BLOCK      = RTL_CONSTANT_STRING(L".txt");
-static CONST UNICODE_STRING TEXT_TO_BLOCK     = RTL_CONSTANT_STRING(L"This текст should be blocked!");
+static CONST UTF8_STRING    EXT_TO_BLOCK      = RTL_CONSTANT_STRING(".тxt");
+static CONST UTF8_STRING    TEXT_TO_BLOCK     = RTL_CONSTANT_STRING("This текст should be blocked!");
 
 #ifndef USE_DEFAULT_CONFIG_PATH
 static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigFileName");
@@ -82,7 +82,17 @@ static BOOLEAN initDefaultConfig()
     if (not allocUnicodeString(&file_blocker_config.ext_to_block))
         return FALSE;
 
-    RtlCopyUnicodeString(&file_blocker_config.ext_to_block, &EXT_TO_BLOCK);
+    NTSTATUS status = RtlUTF8StringToUnicodeString(&file_blocker_config.ext_to_block,
+                                                   (PUTF8_STRING)&EXT_TO_BLOCK,
+                                                   FALSE);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
+
+        freeUnicodeString(&file_blocker_config.ext_to_block);
+
+        return FALSE;
+    }
 
     if (not allocUnicodeString(&file_blocker_config.text_to_block))
     {
@@ -91,7 +101,18 @@ static BOOLEAN initDefaultConfig()
         return FALSE;
     }
 
-    RtlCopyUnicodeString(&file_blocker_config.text_to_block, &TEXT_TO_BLOCK);
+    status = RtlUTF8StringToUnicodeString(&file_blocker_config.text_to_block,
+                                          (PUTF8_STRING)&TEXT_TO_BLOCK,
+                                          FALSE);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
+
+        freeUnicodeString(&file_blocker_config.ext_to_block);
+        freeUnicodeString(&file_blocker_config.text_to_block);
+
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -188,7 +209,7 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
                     .MaximumLength = (USHORT)name_length
                 };
 
-                KdPrint(("Parameter name: \"%Z\"\n", name));
+                KdPrint(("Parameter name: \"%Z\"\n", &name));
 
                 if (RtlEqualString(&names[0], &name, TRUE))
                     value_pointer = &file_blocker_config.ext_to_block;
@@ -367,7 +388,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 #else
-    KdPrint(("Config file path: %wZ\n", CONFIG_FILE_PATH));
+    KdPrint(("Config file path: %wZ\n", &CONFIG_FILE_PATH));
 #endif
 
     HANDLE config_file_handle;
@@ -428,8 +449,8 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
         MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
 
-        KdPrint(("Extension to block: \"%wZ\"\n", file_blocker_config.ext_to_block));
-        KdPrint(("Text to block: \"%wZ\"\n", file_blocker_config.text_to_block));
+        KdPrint(("Extension to block: \"%wZ\"\n", &file_blocker_config.ext_to_block));
+        KdPrint(("Text to block: \"%wZ\"\n", &file_blocker_config.text_to_block));
 
         return TRUE;
     }
