@@ -1,9 +1,8 @@
 // Порядок подключения заголовочных файлов важен!
 #if !defined(USE_DEFAULT_CONFIG_PATH) && defined(USE_FULL_CONFIG_PATH)
 #include <ntifs.h>
-#include <ntstrsafe.h>
 #endif
-
+#include <ntstrsafe.h>
 #include <ntddk.h>
 
 #include <iso646.h>
@@ -16,10 +15,10 @@
 #define MAX_FILE_LEN   1024
 #define MAX_STRING_LEN  256
 
-static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
-
 static CONST UTF8_STRING    EXT_TO_BLOCK      = RTL_CONSTANT_STRING(".txt");
 static CONST UTF8_STRING    TEXT_TO_BLOCK     = RTL_CONSTANT_STRING("This текст should be blocked!");
+
+static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
 
 #ifndef USE_DEFAULT_CONFIG_PATH
 static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigFileName");
@@ -240,6 +239,10 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
         .Length = object_name_info->Name.Length,
         .MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION))
     };
+
+    // В структуре OBJECT_NAME_INFORMATION поле Name.Buffer проставляется функцией ObQueryNameString().
+    ASSERTMSG("INVALID POINTER", output_string.Buffer == (PWCHAR)(buffer + sizeof(OBJECT_NAME_INFORMATION)));
+    ASSERTMSG("INVALID SIZE", output_string.MaximumLength == (USHORT)((buffer + sizeof(buffer)) - (PCHAR)output_string.Buffer));
 
     // Возможно в FILE_OBJECT имя составное и начало имени в поле RelatedFileObject->FileName.
     if (not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, &root_directory_object->FileName)) or
