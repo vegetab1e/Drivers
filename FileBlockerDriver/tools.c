@@ -239,6 +239,18 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     ASSERTMSG("INVALID SIZE",    object_name_info->Name.MaximumLength ==
                                  (USHORT)((buffer + sizeof(buffer)) - (PCHAR)object_name_info->Name.Buffer));
 
+    size_t num_bytes;
+    status = RtlUnalignedStringCbLengthW(object_name_info->Name.Buffer,
+                                         object_name_info->Name.MaximumLength,
+                                         &num_bytes);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to determine string length: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    NT_VERIFY(object_name_info->Name.Length == (USHORT)num_bytes);
+
     KdPrint(("Device name: \"%wZ\"\n", &object_name_info->Name));
 
     // Возможно в FILE_OBJECT имя составное и начало имени в поле RelatedFileObject->FileName.
