@@ -199,10 +199,8 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 {
     UNREFERENCED_PARAMETER(driver_object);
 
-#ifdef UNDER_CONSTRUCTION
     if (file_blocker_props.server_port)
         FltCloseCommunicationPort(file_blocker_props.server_port);
-#endif
 
     if (file_blocker_props.filter_handle)
     {
