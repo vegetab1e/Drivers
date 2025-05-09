@@ -19,9 +19,6 @@
 #define MAX_FILE_LEN   1024U
 #define MAX_STRING_LEN  256U
 
-static CONST UTF8_STRING    EXT_TO_BLOCK      = RTL_CONSTANT_STRING(".txt");
-static CONST UTF8_STRING    TEXT_TO_BLOCK     = RTL_CONSTANT_STRING("This текст should be blocked!");
-
 static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
 
 #ifndef USE_DEFAULT_CONFIG_PATH
@@ -38,12 +35,30 @@ typedef struct _FILE_BLOCKER_CONFIGURATION
 
 static FILE_BLOCKER_CONFIGURATION file_blocker_config;
 
-static BOOLEAN allocUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
+typedef struct _CONFIGURATION_PARAMETER
 {
-#ifdef PARANOID_MODE
+    ANSI_STRING name;
+    PUNICODE_STRING value;
+    UTF8_STRING def_value;
+} CONFIGURATION_PARAMETER;
+
+static CONFIGURATION_PARAMETER fb_config_params[] = {
+    { RTL_CONSTANT_STRING("ext_to_block"),
+      &file_blocker_config.ext_to_block,
+      RTL_CONSTANT_STRING(".txt") },
+
+    { RTL_CONSTANT_STRING("text_to_block"),
+      &file_blocker_config.text_to_block,
+      RTL_CONSTANT_STRING("This текст should be blocked!") }
+};
+
+static CONST USHORT num_fb_config_params = sizeof(fb_config_params) / sizeof(fb_config_params[0]);
+
+static NTSTATUS allocUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
+{
     if (not unicode_string)
-        return FALSE;
-#endif
+        return STATUS_INVALID_PARAMETER;
+
     if (unicode_string->Buffer)
     {
         KdPrint(("WARNING: String not empty!\n"));
@@ -62,20 +77,19 @@ static BOOLEAN allocUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 
         unicode_string->MaximumLength = 0;
         
-        return FALSE;
+        return STATUS_NO_MEMORY;
     }
 
     RtlZeroMemory(unicode_string->Buffer, unicode_string->MaximumLength);
 
-    return TRUE;
+    return STATUS_SUCCESS;
 }
 
 static VOID freeUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 {
-#ifdef PARANOID_MODE
     if (not unicode_string)
-        return FALSE;
-#endif
+        return;
+
     unicode_string->Length = 0;
     unicode_string->MaximumLength = 0;
 
@@ -88,37 +102,33 @@ static VOID freeUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 
 static BOOLEAN initDefaultConfig()
 {
-    if (not allocUnicodeString(&file_blocker_config.ext_to_block))
-        return FALSE;
-
-    NTSTATUS status = RtlUTF8StringToUnicodeString(&file_blocker_config.ext_to_block,
-                                                   (PUTF8_STRING)&EXT_TO_BLOCK,
-                                                   FALSE);
-    if (not NT_SUCCESS(status))
+    LONG index = 0;
+    NTSTATUS status = STATUS_SUCCESS;
+    while (index < num_fb_config_params)
     {
-        KdPrint(("Failed to convert string: 0x%08X\n", status));
+        status = allocUnicodeString(fb_config_params[index].value);
+        if (not NT_SUCCESS(status))
+            break;
 
-        freeUnicodeString(&file_blocker_config.ext_to_block);
+        status = RtlUTF8StringToUnicodeString(fb_config_params[index].value,
+                                              &fb_config_params[index].def_value,
+                                              FALSE);
+        if (not NT_SUCCESS(status))
+        {
+            KdPrint(("Failed to convert string: 0x%08X\n", status));
 
-        return FALSE;
+            freeUnicodeString(fb_config_params[index].value);
+
+            break;
+        }
+
+        ++index;
     }
 
-    if (not allocUnicodeString(&file_blocker_config.text_to_block))
-    {
-        freeUnicodeString(&file_blocker_config.ext_to_block);
-
-        return FALSE;
-    }
-
-    status = RtlUTF8StringToUnicodeString(&file_blocker_config.text_to_block,
-                                          (PUTF8_STRING)&TEXT_TO_BLOCK,
-                                          FALSE);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to convert string: 0x%08X\n", status));
-
-        freeUnicodeString(&file_blocker_config.ext_to_block);
-        freeUnicodeString(&file_blocker_config.text_to_block);
+        while (--index >= 0)
+            freeUnicodeString(fb_config_params[index].value);
 
         return FALSE;
     }
@@ -346,10 +356,7 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
                             _In_ ULONG size)
 {
-    static CONST ANSI_STRING names[] = {
-        RTL_CONSTANT_STRING("ext_to_block"),
-        RTL_CONSTANT_STRING("text_to_block")
-    };
+    static CHAR buffer[MAX_STRING_LEN * sizeof(WCHAR)];
 
     if (not data or not size)
         return;
@@ -369,12 +376,16 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
                     .MaximumLength = (USHORT)length
                 };
 
-                KdPrint(("Parameter name: \"%Z\"\n", &name));
+                for (USHORT index = 0; index < num_fb_config_params; ++index)
+                {
+                    if (RtlEqualString(&fb_config_params[index].name, &name, TRUE))
+                    {
+                        pointer = fb_config_params[index].value;
 
-                if (RtlEqualString(&names[0], &name, TRUE))
-                    pointer = &file_blocker_config.ext_to_block;
-                else if (RtlEqualString(&names[1], &name, TRUE))
-                    pointer = &file_blocker_config.text_to_block;
+                        KdPrint(("Parameter name: \"%Z\"\n", &name));
+                        break;
+                    }
+                }
             }
             
             if (not pointer)
@@ -400,18 +411,32 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
         }
         else if (!is_name && (data[i] == '\r' || data[i] == '\n' || (i + 1) == size))
         {
-            CONST ULONG length = (((i + 1) == size && data[i] != '\n') ? (i + 1) : i) - j;
-            if (length != 0 && length <= MAX_STRING_LEN * sizeof(WCHAR))
+            ULONG length = (((i + 1) == size && data[i] != '\n') ? (i + 1) : i) - j;
+            if (length != 0 && length <= sizeof(buffer))
             {
-                UTF8_STRING value = {
-                    .Buffer = data + j,
-                    .Length = (USHORT)length,
-                    .MaximumLength = (USHORT)length
-                };
+                NTSTATUS status = RtlUTF8ToUnicodeN((PWCHAR)buffer,
+                                                    sizeof(buffer),
+                                                    &length,
+                                                    data + j,
+                                                    length);
+                if (NT_SUCCESS(status))
+                {
+                    CONST UNICODE_STRING value = {
+                        .Buffer = (PWCHAR)buffer,
+                        .Length = (USHORT)length,
+                        .MaximumLength = (USHORT)length
+                    };
 
-                RtlUTF8StringToUnicodeString(pointer, &value, FALSE);
-                
-                KdPrint(("Parameter value: \"%wZ\"\n", pointer));
+                    status = RtlUnicodeStringCopy(pointer, &value);
+                    if (NT_SUCCESS(status))
+                        KdPrint(("Parameter value: \"%wZ\"\n", &value));
+                    else
+                        KdPrint(("Failed to copy string: 0x%08X\n", status));
+                }
+                else
+                {
+                    KdPrint(("Failed to convert string: 0x%08X\n", status));
+                }
             }
 
             // до начала следующей непустой строки
@@ -658,8 +683,8 @@ End:
 
 VOID uninitializeFileBlocker()
 {
-    freeUnicodeString(&file_blocker_config.ext_to_block);
-    freeUnicodeString(&file_blocker_config.text_to_block);
+    for (USHORT index = 0; index < num_fb_config_params; ++index)
+        freeUnicodeString(fb_config_params[index].value);
 }
 
 _Use_decl_annotations_
