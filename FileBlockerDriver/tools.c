@@ -11,9 +11,13 @@
 
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
-#define MAX_PATH_LEN    256
-#define MAX_FILE_LEN   1024
-#define MAX_STRING_LEN  256
+#define OS_MAJOR_VERSION    10UL
+#define OS_MINOR_VERSION     0UL
+#define OS_BUILD_NUMBER  19041UL
+
+#define MAX_PATH_LEN    256U
+#define MAX_FILE_LEN   1024U
+#define MAX_STRING_LEN  256U
 
 static CONST UTF8_STRING    EXT_TO_BLOCK      = RTL_CONSTANT_STRING(".txt");
 static CONST UTF8_STRING    TEXT_TO_BLOCK     = RTL_CONSTANT_STRING("This текст should be blocked!");
@@ -21,7 +25,7 @@ static CONST UTF8_STRING    TEXT_TO_BLOCK     = RTL_CONSTANT_STRING("This тек
 static CONST UNICODE_STRING RECYCLE_BIN_NAME  = RTL_CONSTANT_STRING(L"$RECYCLE.BIN");
 
 #ifndef USE_DEFAULT_CONFIG_PATH
-static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigFileName");
+static       UNICODE_STRING VALUE_ENTRY_NAME  = RTL_CONSTANT_STRING(L"ConfigFile");
 #else
 static       UNICODE_STRING CONFIG_FILE_PATH  = RTL_CONSTANT_STRING(L"\\??\\C:\\config.ini");
 #endif
@@ -168,7 +172,7 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     }
 
     PKEY_VALUE_PARTIAL_INFORMATION value_info = (PKEY_VALUE_PARTIAL_INFORMATION)buffer;
-    if (value_info->Type != REG_EXPAND_SZ)
+    if (value_info->Type != REG_SZ)
     {
         KdPrint(("Wrong value entry type\n"));
         return FALSE;
@@ -789,8 +793,9 @@ BOOLEAN checkOsVersion()
 
     KdPrint(("OS version: %wZ\n", &os_version));
 
-    if (os_version_info.dwMajorVersion < 10UL or
-        os_version_info.dwBuildNumber  < 19041UL)
+    if (os_version_info.dwMajorVersion != OS_MAJOR_VERSION or
+        os_version_info.dwMinorVersion != OS_MINOR_VERSION or
+        os_version_info.dwBuildNumber   < OS_BUILD_NUMBER)
         return FALSE;
 
     return TRUE;
