@@ -232,30 +232,28 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 
     POBJECT_NAME_INFORMATION object_name_info = (POBJECT_NAME_INFORMATION)buffer;
 
+    ASSERTMSG("INVALID POINTER", object_name_info->Name.Buffer ==
+                                 (PWCHAR)(buffer + sizeof(OBJECT_NAME_INFORMATION)));
+
+    ASSERTMSG("INVALID SIZE",    sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION) ==
+                                 (buffer + sizeof(buffer)) - (PCHAR)object_name_info->Name.Buffer);
+
     KdPrint(("Device name: \"%wZ\"\n", &object_name_info->Name));
 
-    UNICODE_STRING output_string = {
-        .Buffer = object_name_info->Name.Buffer,
-        .Length = object_name_info->Name.Length,
-        .MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION))
-    };
-
-    // В структуре OBJECT_NAME_INFORMATION поле Name.Buffer проставляется функцией ObQueryNameString().
-    ASSERTMSG("INVALID POINTER", output_string.Buffer == (PWCHAR)(buffer + sizeof(OBJECT_NAME_INFORMATION)));
-    ASSERTMSG("INVALID SIZE", output_string.MaximumLength == (USHORT)((buffer + sizeof(buffer)) - (PCHAR)output_string.Buffer));
+    object_name_info->Name.MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION));
 
     // Возможно в FILE_OBJECT имя составное и начало имени в поле RelatedFileObject->FileName.
-    if (not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, &root_directory_object->FileName)) or
-        not NT_SUCCESS(status = RtlUnicodeStringCatString(&output_string, L"\\")) or
-        not NT_SUCCESS(status = RtlUnicodeStringCat(&output_string, config_file_name)))
+    if (not NT_SUCCESS(status = RtlUnicodeStringCat(&object_name_info->Name, &root_directory_object->FileName)) or
+        not NT_SUCCESS(status = RtlUnicodeStringCatString(&object_name_info->Name, L"\\")) or
+        not NT_SUCCESS(status = RtlUnicodeStringCat(&object_name_info->Name, config_file_name)))
     {
         KdPrint(("Failed to concatenate strings: 0x%08X\n", status));
         return FALSE;
     }
 
-    KdPrint(("Config file path: \"%wZ\"\n", &output_string));
+    KdPrint(("Config file path: \"%wZ\"\n", &object_name_info->Name));
 
-    *config_file_path = output_string;
+    *config_file_path = object_name_info->Name;
 
     return TRUE;
 }
