@@ -153,10 +153,10 @@ static BOOLEAN getLogFilePath(_Out_ PUNICODE_STRING log_file_path)
           drivers should not use them. */
           | RTL_QUERY_REGISTRY_NOEXPAND,
           L"LogFile",
-          & unicode_string,
+          &unicode_string,
           (REG_EXPAND_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_NONE,
           NULL,
-          0},
+          0 },
 
         { NULL,
           0,
