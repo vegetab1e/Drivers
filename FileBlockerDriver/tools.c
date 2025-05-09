@@ -231,16 +231,15 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     }
 
     POBJECT_NAME_INFORMATION object_name_info = (POBJECT_NAME_INFORMATION)buffer;
+    object_name_info->Name.MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION));
 
     ASSERTMSG("INVALID POINTER", object_name_info->Name.Buffer ==
                                  (PWCHAR)(buffer + sizeof(OBJECT_NAME_INFORMATION)));
 
-    ASSERTMSG("INVALID SIZE",    sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION) ==
-                                 (buffer + sizeof(buffer)) - (PCHAR)object_name_info->Name.Buffer);
+    ASSERTMSG("INVALID SIZE",    object_name_info->Name.MaximumLength ==
+                                 (USHORT)((buffer + sizeof(buffer)) - (PCHAR)object_name_info->Name.Buffer));
 
     KdPrint(("Device name: \"%wZ\"\n", &object_name_info->Name));
-
-    object_name_info->Name.MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION));
 
     // Возможно в FILE_OBJECT имя составное и начало имени в поле RelatedFileObject->FileName.
     if (not NT_SUCCESS(status = RtlUnicodeStringCat(&object_name_info->Name, &root_directory_object->FileName)) or
@@ -317,7 +316,7 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
         }
         else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == length))
         {
-            CONST ULONG value_length = ((buffer[i] != '\n' && (i + 1) == length) ? (i + 1) : i) - j;
+            CONST ULONG value_length = (((i + 1) == length && buffer[i] != '\n') ? (i + 1) : i) - j;
             if (value_length > 0 && value_length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
                 UTF8_STRING value = {
