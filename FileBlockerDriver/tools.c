@@ -126,6 +126,72 @@ static BOOLEAN initDefaultConfig()
     return TRUE;
 }
 
+_Success_(return != FALSE)
+static BOOLEAN getLogFilePath(_Out_ PUNICODE_STRING log_file_path)
+{
+    static CHAR buffer[(MAX_PATH_LEN + 1) * sizeof(WCHAR)];
+    static CONST USHORT length = sizeof(buffer);
+#ifdef PARANOID_MODE
+    if (not log_file_path)
+        return FALSE;
+#endif
+    // Можно и не чистить память.
+    RtlZeroMemory(buffer, length);
+
+    UNICODE_STRING unicode_string = {
+        .Buffer = (PWCHAR)buffer,
+        .Length = 0,
+        .MaximumLength = length
+    };
+
+    RTL_QUERY_REGISTRY_TABLE query_table[] = {
+        { NULL,
+          RTL_QUERY_REGISTRY_REQUIRED | RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK
+       /* Kernel-mode drivers must specify the RTL_QUERY_REGISTRY_NOEXPAND flag to prevent
+          calling environment variable routines. These routines are unsafe, so kernel-mode
+          drivers should not use them. */
+          | RTL_QUERY_REGISTRY_NOEXPAND,
+          L"LogFile",
+          & unicode_string,
+          (REG_EXPAND_SZ << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_NONE,
+          NULL,
+          0},
+
+        { NULL,
+          0,
+          NULL }
+    };
+
+    NTSTATUS status = RtlQueryRegistryValues(RTL_REGISTRY_SERVICES,
+                                             L"FileBlockerDriver",
+                                             query_table,
+                                             NULL,
+                                             NULL);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to query registry values: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    size_t num_bytes;
+    status = RtlUnalignedStringCbLengthW(unicode_string.Buffer,
+                                         unicode_string.MaximumLength,
+                                         &num_bytes);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to determine string length: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    NT_VERIFY(unicode_string.Length == (USHORT)num_bytes);
+
+    KdPrint(("Log file path: \"%wZ\"\n", &unicode_string));
+
+    *log_file_path = unicode_string;
+
+    return TRUE;
+}
+
 #ifndef USE_DEFAULT_CONFIG_PATH
 _Success_(return != FALSE)
 static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
@@ -154,7 +220,7 @@ static BOOLEAN getConfigFileName(_In_ PUNICODE_STRING registry_key_path,
     }
 
     ULONG length = sizeof(buffer);
-    // Можно и не чистить память
+    // Можно и не чистить память.
     RtlZeroMemory(buffer, length);
     status = ZwQueryValueKey(key_handle,
                              &VALUE_ENTRY_NAME,
@@ -222,7 +288,7 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     KdPrint(("Root directory name: \"%wZ\"\n", &root_directory_object->FileName));
 
     ULONG length = sizeof(buffer);
-    // Можно и не чистить память
+    // Можно и не чистить память.
     RtlZeroMemory(buffer, length);
     status = ObQueryNameString(root_directory_object->DeviceObject,
                                (POBJECT_NAME_INFORMATION)buffer,
@@ -464,6 +530,13 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
     if (not initDefaultConfig())
         return FALSE;
+
+    // Замысел этой функции был в расширении
+    // переменной окружения %SystemRoot%, но
+    // я не знаю как обойти запрет на это.
+    UNICODE_STRING log_file_path;
+    if (not getLogFilePath(&log_file_path))
+        goto End;
 
 #ifndef USE_DEFAULT_CONFIG_PATH
     HANDLE root_directory_handle;
