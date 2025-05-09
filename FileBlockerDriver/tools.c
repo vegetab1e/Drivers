@@ -126,6 +126,7 @@ static BOOLEAN initDefaultConfig()
     return TRUE;
 }
 
+#ifdef UNDER_CONSTRUCTION
 _Success_(return != FALSE)
 static BOOLEAN getLogFilePath(_Out_ PUNICODE_STRING log_file_path)
 {
@@ -191,6 +192,7 @@ static BOOLEAN getLogFilePath(_Out_ PUNICODE_STRING log_file_path)
 
     return TRUE;
 }
+#endif
 
 #ifndef USE_DEFAULT_CONFIG_PATH
 _Success_(return != FALSE)
@@ -531,12 +533,14 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     if (not initDefaultConfig())
         return FALSE;
 
+#ifdef UNDER_CONSTRUCTION
     // Замысел этой функции был в расширении
     // переменной окружения %SystemRoot%, но
     // я не знаю как обойти запрет на это.
     UNICODE_STRING log_file_path;
     if (not getLogFilePath(&log_file_path))
         goto End;
+#endif
 
 #ifndef USE_DEFAULT_CONFIG_PATH
     HANDLE root_directory_handle;

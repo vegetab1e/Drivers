@@ -9,11 +9,11 @@ static UNICODE_STRING SERVER_PORT_NAME = RTL_CONSTANT_STRING(L"\\FileBlockerFilt
 typedef struct _FILE_BLOCKER_PROPERTIES
 {
     PFLT_FILTER filter_handle;
-#ifdef UNDER_CONSTRUCTION
     PFLT_PORT   server_port;
     PFLT_PORT   client_port;
-#endif
 } FILE_BLOCKER_PROPERTIES, *PFILE_BLOCKER_PROPERTIES;
+
+static FILE_BLOCKER_PROPERTIES file_blocker_props;
 
 DRIVER_INITIALIZE driverEntry;
 static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object);
@@ -28,7 +28,6 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
                                                       _In_ PCFLT_RELATED_OBJECTS filter_objects,
                                                       _Out_ PVOID* completion_context);
 
-#ifdef UNDER_CONSTRUCTION
 static NTSTATUS
 messageCallback(_In_ PVOID connection_cookie,
                 _In_reads_bytes_opt_(input_buffer_size) PVOID input_buffer,
@@ -86,9 +85,6 @@ disconnectCallback(_In_opt_ PVOID connection_cookie)
     FltCloseClientPort(file_blocker_props.filter_handle,
                        &file_blocker_props.client_port);
 }
-#endif
-
-static FILE_BLOCKER_PROPERTIES file_blocker_props;
 
 static CONST FLT_OPERATION_REGISTRATION callbacks[] = {
     { IRP_MJ_CREATE,
@@ -150,7 +146,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
 
     KdPrint(("Filter registered\n"));
 
-#ifdef UNDER_CONSTRUCTION
     PSECURITY_DESCRIPTOR security_descriptor;
     status = FltBuildDefaultSecurityDescriptor(&security_descriptor, FLT_PORT_ALL_ACCESS);
     if (not NT_SUCCESS(status))
@@ -182,7 +177,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to create communication port\n"));
         return status;
     }
-#endif
 
     status = FltStartFiltering(file_blocker_props.filter_handle);
     if (not NT_SUCCESS(status))
