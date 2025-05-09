@@ -137,7 +137,7 @@ HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 ; HKR is HKLM\SYSTEM\ControlSet001\Services\FileBlockerDriver
 ;     eq HKLM\SYSTEM\CurrentControlSet\Services\FileBlockerDriver
 HKR,,"ConfigFile",0x00000000,%DriverName%.ini
-HKR,,"LogFile",0x00020000,%%SystemRoot%%\Logs\%DriverName%.log
+;HKR,,"LogFile",0x00020000,%%SystemRoot%%\Logs\%DriverName%.log
 
 ;;
 ;; String Section

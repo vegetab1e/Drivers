@@ -343,50 +343,50 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 #endif // USE_FULL_CONFIG_PATH
 #endif // !USE_DEFAULT_CONFIG_PATH
 
-static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
-                            _In_ ULONG length)
+static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
+                            _In_ ULONG size)
 {
     static CONST ANSI_STRING names[] = {
         RTL_CONSTANT_STRING("ext_to_block"),
         RTL_CONSTANT_STRING("text_to_block")
     };
 
-    if ((buffer == NULL) || (length == 0))
+    if (not data or not size)
         return;
 
     BOOLEAN is_name = TRUE;
-    PUNICODE_STRING value_pointer = NULL;
-    for (ULONG i = 0, j = 0; i < length; ++i)
+    PUNICODE_STRING pointer = NULL;
+    for (ULONG i = 0, j = 0; i < size; ++i)
     {
-        if (is_name && buffer[i] == '=')
+        if (is_name && data[i] == '=')
         {
-            CONST ULONG name_length = i - j;
-            if (name_length > 0 && name_length <= MAX_STRING_LEN)
+            CONST ULONG length = i - j;
+            if (length != 0 && length <= MAX_STRING_LEN)
             {
                 CONST ANSI_STRING name = {
-                    .Buffer = buffer + j,
-                    .Length = (USHORT)name_length,
-                    .MaximumLength = (USHORT)name_length
+                    .Buffer = data + j,
+                    .Length = (USHORT)length,
+                    .MaximumLength = (USHORT)length
                 };
 
                 KdPrint(("Parameter name: \"%Z\"\n", &name));
 
                 if (RtlEqualString(&names[0], &name, TRUE))
-                    value_pointer = &file_blocker_config.ext_to_block;
+                    pointer = &file_blocker_config.ext_to_block;
                 else if (RtlEqualString(&names[1], &name, TRUE))
-                    value_pointer = &file_blocker_config.text_to_block;
+                    pointer = &file_blocker_config.text_to_block;
             }
             
-            if (not value_pointer)
+            if (not pointer)
             {
                 // до конца текущей строки
                 do {
                     ++i;
                 }
-                while (i < length && buffer[i] != '\n');
+                while (i < size && data[i] != '\n');
 
                 // до начала следующей непустой строки
-                while ((i + 1) < length && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
+                while ((i + 1) < size && (data[i + 1] == '\r' || data[i + 1] == '\n'))
                 {
                     ++i;
                 }
@@ -398,31 +398,31 @@ static VOID parseConfigData(_In_reads_bytes_(length) PCCHAR buffer,
             j = i + 1;
             is_name = FALSE;
         }
-        else if (!is_name && (buffer[i] == '\r' || buffer[i] == '\n' || (i + 1) == length))
+        else if (!is_name && (data[i] == '\r' || data[i] == '\n' || (i + 1) == size))
         {
-            CONST ULONG value_length = (((i + 1) == length && buffer[i] != '\n') ? (i + 1) : i) - j;
-            if (value_length > 0 && value_length <= MAX_STRING_LEN * sizeof(WCHAR))
+            CONST ULONG length = (((i + 1) == size && data[i] != '\n') ? (i + 1) : i) - j;
+            if (length != 0 && length <= MAX_STRING_LEN * sizeof(WCHAR))
             {
                 UTF8_STRING value = {
-                    .Buffer = buffer + j,
-                    .Length = (USHORT)value_length,
-                    .MaximumLength = (USHORT)value_length
+                    .Buffer = data + j,
+                    .Length = (USHORT)length,
+                    .MaximumLength = (USHORT)length
                 };
 
-                RtlUTF8StringToUnicodeString(value_pointer, &value, FALSE);
+                RtlUTF8StringToUnicodeString(pointer, &value, FALSE);
                 
-                KdPrint(("Parameter value: \"%wZ\"\n", value_pointer));
+                KdPrint(("Parameter value: \"%wZ\"\n", pointer));
             }
 
             // до начала следующей непустой строки
-            while ((i + 1) < length && (buffer[i + 1] == '\r' || buffer[i + 1] == '\n'))
+            while ((i + 1) < size && (data[i + 1] == '\r' || data[i + 1] == '\n'))
             {
                 ++i;
             }
 
             j = i + 1;
             is_name = TRUE;
-            value_pointer = NULL;
+            pointer = NULL;
         }
     }
 }
