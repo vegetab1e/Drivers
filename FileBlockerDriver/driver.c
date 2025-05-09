@@ -4,6 +4,8 @@
 
 #include "tools.h"
 
+#define BUFFER_SIZE 1024U
+
 static UNICODE_STRING SERVER_PORT_NAME = RTL_CONSTANT_STRING(L"\\FileBlockerFilterPort");
 
 typedef struct _FILE_BLOCKER_PROPERTIES
@@ -37,8 +39,6 @@ messageCallback(_In_ PVOID connection_cookie,
                 _Out_ PULONG output_buffer_length)
 {
     UNREFERENCED_PARAMETER(connection_cookie);
-    UNREFERENCED_PARAMETER(input_buffer);
-    UNREFERENCED_PARAMETER(input_buffer_size);
     UNREFERENCED_PARAMETER(output_buffer);
     UNREFERENCED_PARAMETER(output_buffer_size);
 
@@ -47,6 +47,36 @@ messageCallback(_In_ PVOID connection_cookie,
     KdPrint(("messageCallback() called\n"));
 
     *output_buffer_length = 0;
+
+    if (not input_buffer or
+        not input_buffer_size)
+    {
+        KdPrint(("Empty message\n"));
+        return STATUS_SUCCESS;
+    }
+
+    CHAR buffer[BUFFER_SIZE];
+    ULONG length = sizeof(buffer);
+    RtlZeroMemory(buffer, length);
+
+    CONST NTSTATUS status = RtlUTF8ToUnicodeN((PWCHAR)buffer,
+                                              length,
+                                              &length,
+                                              input_buffer,
+                                              input_buffer_size);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
+        return STATUS_SUCCESS;
+    }
+    
+    CONST UNICODE_STRING message = {
+        .Buffer = (PWCHAR)buffer,
+        .Length = (USHORT)length,
+        .MaximumLength = (USHORT)length
+    };
+    
+    KdPrint(("Message: %wZ\n", &message));
 
     return STATUS_SUCCESS;
 }

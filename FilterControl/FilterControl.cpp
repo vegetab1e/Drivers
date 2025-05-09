@@ -19,9 +19,9 @@ int main(int argc, char* argv[])
         return 1;
 
     DWORD num_bytes = 0;
-    PCCH message = "Hello ворлд!\n";
+    PCCH message = "Hello ворлд!";
     result = FilterSendMessage(handle,
-                               &message,
+                               (PCH)message,
                                static_cast<DWORD>(std::strlen(message)),
                                buffer,
                                sizeof(buffer),
