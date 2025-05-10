@@ -32,23 +32,23 @@ typedef struct _FILE_BLOCKER_CONFIGURATION
     UNICODE_STRING text_to_block;
 } FILE_BLOCKER_CONFIGURATION, *PFILE_BLOCKER_CONFIGURATION;
 
-static FILE_BLOCKER_CONFIGURATION file_blocker_config;
+static FILE_BLOCKER_CONFIGURATION fb_config;
 
 typedef struct _CONFIGURATION_PARAMETER
 {
     ANSI_STRING name;
-    PUNICODE_STRING value;
     UTF8_STRING def_value;
+    PUNICODE_STRING value;
 } CONFIGURATION_PARAMETER;
 
 static CONFIGURATION_PARAMETER fb_config_params[] = {
     { RTL_CONSTANT_STRING("ext_to_block"),
-      &file_blocker_config.ext_to_block,
-      RTL_CONSTANT_STRING(".txt") },
+      RTL_CONSTANT_STRING(".txt"),
+      &fb_config.ext_to_block },
 
     { RTL_CONSTANT_STRING("text_to_block"),
-      &file_blocker_config.text_to_block,
-      RTL_CONSTANT_STRING("This текст should be blocked!") }
+      RTL_CONSTANT_STRING("This текст should be blocked!"),
+      &fb_config.text_to_block }
 };
 
 static CONST USHORT num_fb_config_params = sizeof(fb_config_params) / sizeof(fb_config_params[0]);
@@ -314,11 +314,11 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     POBJECT_NAME_INFORMATION object_name_info = (POBJECT_NAME_INFORMATION)buffer;
     object_name_info->Name.MaximumLength = (USHORT)(sizeof(buffer) - sizeof(OBJECT_NAME_INFORMATION));
 
-    ASSERTMSG("INVALID POINTER", object_name_info->Name.Buffer ==
-                                 (PWCHAR)(buffer + sizeof(OBJECT_NAME_INFORMATION)));
+    NT_ASSERTMSG("INVALID POINTER", object_name_info->Name.Buffer ==
+                                    (PWCHAR)(buffer + sizeof(OBJECT_NAME_INFORMATION)));
 
-    ASSERTMSG("INVALID SIZE",    object_name_info->Name.MaximumLength ==
-                                 (USHORT)((buffer + sizeof(buffer)) - (PCHAR)object_name_info->Name.Buffer));
+    NT_ASSERTMSG("INVALID SIZE",    object_name_info->Name.MaximumLength ==
+                                    (USHORT)((buffer + sizeof(buffer)) - (PCHAR)object_name_info->Name.Buffer));
 
     size_t num_bytes;
     status = RtlUnalignedStringCbLengthW(object_name_info->Name.Buffer,
@@ -726,7 +726,7 @@ _Use_decl_annotations_
 BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
 {
     if ((file_name == NULL) || (file_name->Buffer == NULL) ||
-        (file_name->Length < file_blocker_config.ext_to_block.Length))
+        (file_name->Length < fb_config.ext_to_block.Length))
         return FALSE;
 
     PWCH dot_pos = NULL;
@@ -746,7 +746,7 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
             .MaximumLength = file_ext_len
         };
 
-        return RtlEqualUnicodeString(&file_ext, &file_blocker_config.ext_to_block, TRUE);
+        return RtlEqualUnicodeString(&file_ext, &fb_config.ext_to_block, TRUE);
     }
 
     return FALSE;
@@ -806,7 +806,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
 
     LARGE_INTEGER max_section_size = {
         .QuadPart = MIN(file_standard_info.EndOfFile.QuadPart,
-                        file_blocker_config.text_to_block.Length)
+                        fb_config.text_to_block.Length)
     };
     HANDLE section_handle;
     status = ZwCreateSection(&section_handle,
@@ -857,7 +857,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
     if (NT_SUCCESS(status))
     {
-        should_block = RtlPrefixUnicodeString(&file_blocker_config.text_to_block,
+        should_block = RtlPrefixUnicodeString(&fb_config.text_to_block,
                                               &unicode_string,
                                               TRUE);
 

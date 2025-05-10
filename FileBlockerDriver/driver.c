@@ -4,18 +4,21 @@
 
 #include "tools.h"
 
-#define BUFFER_SIZE 1024U
+#define RX_BUFFER_SIZE    1024U
+#define MAX_FLT_INSTANCES   32U
 
 static UNICODE_STRING SERVER_PORT_NAME = RTL_CONSTANT_STRING(L"\\FileBlockerFilterPort");
 
 typedef struct _FILE_BLOCKER_PROPERTIES
 {
-    PFLT_FILTER filter_handle;
-    PFLT_PORT   server_port;
-    PFLT_PORT   client_port;
+    PFLT_FILTER filter;
+    PFLT_PORT server_port;
+    PFLT_PORT client_port;
+    USHORT num_instances;
+    PFLT_INSTANCE instances[MAX_FLT_INSTANCES];
 } FILE_BLOCKER_PROPERTIES, *PFILE_BLOCKER_PROPERTIES;
 
-static FILE_BLOCKER_PROPERTIES file_blocker_props;
+static FILE_BLOCKER_PROPERTIES fb_props;
 
 DRIVER_INITIALIZE driverEntry;
 static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object);
@@ -55,7 +58,7 @@ messageCallback(_In_ PVOID connection_cookie,
         return STATUS_SUCCESS;
     }
 
-    CHAR buffer[BUFFER_SIZE];
+    CHAR buffer[RX_BUFFER_SIZE];
     ULONG length = sizeof(buffer);
     RtlZeroMemory(buffer, length);
 
@@ -97,8 +100,8 @@ connectCallback(_In_ PFLT_PORT client_port,
 
     KdPrint(("connectCallback() called\n"));
 
-    FLT_ASSERT(not file_blocker_props.client_port);
-    file_blocker_props.client_port = client_port;
+    FLT_ASSERT(not fb_props.client_port);
+    fb_props.client_port = client_port;
 
     return STATUS_SUCCESS;
 }
@@ -112,8 +115,8 @@ disconnectCallback(_In_opt_ PVOID connection_cookie)
 
     KdPrint(("disconnectCallback() called\n"));
 
-    FltCloseClientPort(file_blocker_props.filter_handle,
-                       &file_blocker_props.client_port);
+    FltCloseClientPort(fb_props.filter,
+                       &fb_props.client_port);
 }
 
 static CONST FLT_OPERATION_REGISTRATION callbacks[] = {
@@ -167,7 +170,7 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
 
     NTSTATUS status = FltRegisterFilter(driver_object,
                                         &filter_registration,
-                                        &file_blocker_props.filter_handle);
+                                        &fb_props.filter);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to register filter\n"));
@@ -191,8 +194,8 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
                                NULL,
                                security_descriptor);
 
-    status = FltCreateCommunicationPort(file_blocker_props.filter_handle,
-                                        &file_blocker_props.server_port,
+    status = FltCreateCommunicationPort(fb_props.filter,
+                                        &fb_props.server_port,
                                         &object_attributes,
                                         NULL,
                                         connectCallback,
@@ -208,12 +211,12 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         return status;
     }
 
-    status = FltStartFiltering(file_blocker_props.filter_handle);
+    status = FltStartFiltering(fb_props.filter);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to start filtering\n"));
 
-        FltUnregisterFilter(file_blocker_props.filter_handle);
+        FltUnregisterFilter(fb_props.filter);
 
         KdPrint(("Filter unregistered\n"));
         return status;
@@ -229,12 +232,12 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 {
     UNREFERENCED_PARAMETER(driver_object);
 
-    if (file_blocker_props.server_port)
-        FltCloseCommunicationPort(file_blocker_props.server_port);
+    if (fb_props.server_port)
+        FltCloseCommunicationPort(fb_props.server_port);
 
-    if (file_blocker_props.filter_handle)
+    if (fb_props.filter)
     {
-        FltUnregisterFilter(file_blocker_props.filter_handle);
+        FltUnregisterFilter(fb_props.filter);
 
         KdPrint(("Filter unregistered\n"));
     }
@@ -245,9 +248,9 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 }
 
 _Use_decl_annotations_
-static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
+static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS unload_flags)
 {
-    UNREFERENCED_PARAMETER(flags);
+    UNREFERENCED_PARAMETER(unload_flags);
 
     PAGED_CODE();
 
@@ -257,27 +260,32 @@ static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
 
 _Use_decl_annotations_
 static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
-                                   _In_ FLT_INSTANCE_SETUP_FLAGS flags,
-                                   _In_ DEVICE_TYPE  volume_device_type,
-                                   _In_ FLT_FILESYSTEM_TYPE  volume_filesystem_type)
+                                   _In_ FLT_INSTANCE_SETUP_FLAGS setup_flags,
+                                   _In_ DEVICE_TYPE device_type,
+                                   _In_ FLT_FILESYSTEM_TYPE filesystem_type)
 {
-    UNREFERENCED_PARAMETER(related_objects);
-    UNREFERENCED_PARAMETER(flags);
+    UNREFERENCED_PARAMETER(setup_flags);
 #ifdef NDEBUG
-    UNREFERENCED_PARAMETER(volume_filesystem_type);
+    UNREFERENCED_PARAMETER(filesystem_type);
 #endif
 
     PAGED_CODE();
 
-    if (volume_device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM)
+    if (device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM)
     {
         KdPrint(("Filter not loaded (device/filesystem types): %lu/%i\n",
-                 volume_device_type, volume_filesystem_type));
+                 device_type, filesystem_type));
         return STATUS_FLT_DO_NOT_ATTACH;
     }
 
+    FLT_ASSERT(fb_props.filter == related_objects->Filter);
+    FLT_ASSERT(fb_props.num_instances < MAX_FLT_INSTANCES);
+
+    KdPrint(("Filter instance: %p\n", related_objects->Instance));
+    fb_props.instances[fb_props.num_instances++] = related_objects->Instance;
+
     KdPrint(("Filter loaded (device/filesystem types): %lu/%i\n",
-             volume_device_type, volume_filesystem_type));
+             device_type, filesystem_type));
     return STATUS_SUCCESS;
 }
 
