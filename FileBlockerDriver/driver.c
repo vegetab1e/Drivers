@@ -21,13 +21,13 @@ DRIVER_INITIALIZE driverEntry;
 static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object);
 
 static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags);
-static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
+static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                                    _In_ FLT_INSTANCE_SETUP_FLAGS flags,
                                    _In_ DEVICE_TYPE  volume_device_yype,
                                    _In_ FLT_FILESYSTEM_TYPE  volume_filesystem_type);
 
 static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
-                                                      _In_ PCFLT_RELATED_OBJECTS filter_objects,
+                                                      _In_ PCFLT_RELATED_OBJECTS related_objects,
                                                       _Out_ PVOID* completion_context);
 
 static NTSTATUS
@@ -256,12 +256,12 @@ static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags)
 }
 
 _Use_decl_annotations_
-static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
+static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                                    _In_ FLT_INSTANCE_SETUP_FLAGS flags,
                                    _In_ DEVICE_TYPE  volume_device_type,
                                    _In_ FLT_FILESYSTEM_TYPE  volume_filesystem_type)
 {
-    UNREFERENCED_PARAMETER(filter_objects);
+    UNREFERENCED_PARAMETER(related_objects);
     UNREFERENCED_PARAMETER(flags);
 #ifdef NDEBUG
     UNREFERENCED_PARAMETER(volume_filesystem_type);
@@ -283,20 +283,20 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS filter_objects,
 
 _Use_decl_annotations_
 static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
-                                                      _In_ PCFLT_RELATED_OBJECTS filter_objects,
+                                                      _In_ PCFLT_RELATED_OBJECTS related_objects,
                                                       _Out_ PVOID* completion_context)
 {
     PAGED_CODE();
 
+    if (completion_context)
+        *completion_context = NULL;
+
     if (not data or
-        not filter_objects or
-        not completion_context)
+        not related_objects)
     {
         KdPrint(("WARNING: Null pointer catched!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
-
-    *completion_context = NULL;
 
     if (not FLT_IS_IRP_OPERATION(data))
     {
@@ -315,6 +315,9 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 #endif
+
+    FLT_ASSERT(io_parameter_block->TargetFileObject == related_objects->FileObject);
+
     PFLT_PARAMETERS parameters = &io_parameter_block->Parameters;
     if (io_parameter_block->MajorFunction == IRP_MJ_SET_INFORMATION)
     {
@@ -374,9 +377,9 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 
         BOOLEAN is_directory = FALSE;
         NTSTATUS status = STATUS_INVALID_PARAMETER;
-        if (not (filter_objects->FileObject && filter_objects->Instance) ||
-            not NT_SUCCESS(status = FltIsDirectory(filter_objects->FileObject,
-                                                   filter_objects->Instance,
+        if (not (related_objects->FileObject && related_objects->Instance) ||
+            not NT_SUCCESS(status = FltIsDirectory(related_objects->FileObject,
+                                                   related_objects->Instance,
                                                    &is_directory)))
         {
             KdPrint(("Failed to check file object type: 0x%08X\n", status));
@@ -416,9 +419,9 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     if (data->Iopb->TargetFileObject)
         KdPrint(("[FLT_CALLBACK_DATA] FileName: %wZ\n",
                  &data->Iopb->TargetFileObject->FileName));
-    if (filter_objects->FileObject)
+    if (related_objects->FileObject)
         KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ\n",
-                 &filter_objects->FileObject->FileName));
+                 &related_objects->FileObject->FileName));
     
     if (data->Iopb->MajorFunction == IRP_MJ_CREATE)
     {
@@ -467,7 +470,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (isTextBlocked(file_name_info->Name))
+    if (isTextBlocked(file_name_info->Name, related_objects))
     {
         KdPrint(("Blocking operation on file: %wZ\n", &file_name_info->Name));
 

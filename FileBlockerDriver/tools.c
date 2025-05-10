@@ -1,7 +1,5 @@
 // Порядок подключения заголовочных файлов важен!
-#if !defined(USE_DEFAULT_CONFIG_PATH) && defined(USE_FULL_CONFIG_PATH)
-#include <ntifs.h>
-#endif
+#include <fltKernel.h>
 #include <ntstrsafe.h>
 #include <ntddk.h>
 
@@ -657,10 +655,10 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-    ULONG num_bytes = MAX_FILE_LEN - 1;
+    ULONG length = MAX_FILE_LEN - 1;
     result = readConfigFile(config_file_handle,
                             buffer,
-                            &num_bytes);
+                            &length);
 
     ZwClose(config_file_handle);
 #if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
@@ -669,10 +667,10 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
     if (result)
     {
-        KdPrint(("Number of bytes read: %lu\n", num_bytes));
+        KdPrint(("Number of bytes read: %lu\n", length));
 
-        buffer[num_bytes++] = '\n';
-        parseConfigData(buffer, num_bytes);
+        buffer[length++] = '\n';
+        parseConfigData(buffer, length);
 
         MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
 
@@ -755,7 +753,8 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
 }
 
 _Use_decl_annotations_
-BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
+BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
+                      _In_ PCFLT_RELATED_OBJECTS related_objects)
 {
     if ((file_name.Buffer == NULL) ||
         (file_name.Length == 0))
@@ -770,17 +769,20 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
     HANDLE file_handle;
     IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = ZwCreateFile(&file_handle,
-                                   FILE_GENERIC_READ,
-                                   &object_attributes,
-                                   &io_status_block,
-                                   NULL,
-                                   FILE_ATTRIBUTE_NORMAL,
-                                   FILE_SHARE_READ | FILE_SHARE_DELETE,
-                                   FILE_OPEN,
-                                   FILE_NON_DIRECTORY_FILE,
-                                   NULL,
-                                   0);
+    NTSTATUS status = FltCreateFile(related_objects->Filter,
+                                    related_objects->Instance,
+                                    &file_handle,
+                                    FILE_GENERIC_READ,
+                                    &object_attributes,
+                                    &io_status_block,
+                                    NULL,
+                                    FILE_ATTRIBUTE_NORMAL,
+                                    FILE_SHARE_READ | FILE_SHARE_DELETE,
+                                    FILE_OPEN,
+                                    FILE_NON_DIRECTORY_FILE,
+                                    NULL,
+                                    0,
+                                    0);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
@@ -797,7 +799,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
 
-        ZwClose(file_handle);
+        FltClose(file_handle);
 
         return FALSE;
     }
@@ -818,7 +820,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
     {
         KdPrint(("Failed to create section: 0x%08X\n", status));
 
-        ZwClose(file_handle);
+        FltClose(file_handle);
 
         return FALSE;
     }
@@ -840,7 +842,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
         KdPrint(("Failed to map view: 0x%08X\n", status));
 
         ZwClose(section_handle);
-        ZwClose(file_handle);
+        FltClose(file_handle);
 
         return FALSE;
     }
@@ -868,7 +870,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
     ZwClose(section_handle);
-    ZwClose(file_handle);
+    FltClose(file_handle);
 
     return should_block;
 }
