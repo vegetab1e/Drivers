@@ -7,7 +7,7 @@ Signature          = "$Windows NT$"
 Class              = "ActivityMonitor"                         ; This is determined by the work this filter driver does
 ClassGuid          = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ; This value is determined by the Class
 Provider           = %ProviderString%
-DriverVer = 05/09/2025,23.23.48.590
+DriverVer = 05/10/2025,3.21.44.353
 CatalogFile        = FileBlockerDriver.cat
 PnpLockdown        = 1
 
@@ -137,7 +137,7 @@ HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
 ; HKR is HKLM\SYSTEM\ControlSet001\Services\FileBlockerDriver
 ;     eq HKLM\SYSTEM\CurrentControlSet\Services\FileBlockerDriver
 HKR,,"ConfigFile",0x00000000,%DriverName%.ini
-HKR,,"LogFile",0x00020000,%%SystemRoot%%\Logs\%DriverName%.log
+;HKR,,"LogFile",0x00020000,%%SystemRoot%%\Logs\%DriverName%.log
 
 ;;
 ;; String Section
