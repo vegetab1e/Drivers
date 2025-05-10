@@ -470,12 +470,17 @@ static BOOLEAN openConfigFile(_In_opt_ HANDLE root_directory_handle,
                                NULL);
 
     IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = ZwOpenFile(config_file_handle,
-                                 FILE_READ_DATA,
-                                 &object_attributes,
-                                 &io_status_block,
-                                 FILE_SHARE_READ,
-                                 FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+    NTSTATUS status = ZwCreateFile(config_file_handle,
+                                   FILE_READ_DATA,
+                                   &object_attributes,
+                                   &io_status_block,
+                                   NULL,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   FILE_SHARE_READ,
+                                   FILE_OPEN,
+                                   FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                                   NULL,
+                                   0);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
@@ -761,12 +766,17 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
     HANDLE file_handle;
     IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = ZwOpenFile(&file_handle,
-                                 FILE_GENERIC_READ,
-                                 &object_attributes,
-                                 &io_status_block,
-                                 FILE_SHARE_READ | FILE_SHARE_DELETE,
-                                 FILE_NON_DIRECTORY_FILE);
+    NTSTATUS status = ZwCreateFile(&file_handle,
+                                   FILE_GENERIC_READ,
+                                   &object_attributes,
+                                   &io_status_block,
+                                   NULL,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   FILE_SHARE_READ | FILE_SHARE_DELETE,
+                                   FILE_OPEN,
+                                   FILE_NON_DIRECTORY_FILE,
+                                   NULL,
+                                   0);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
