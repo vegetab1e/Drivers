@@ -409,9 +409,9 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
             j = i + 1;
             is_name = FALSE;
         }
-        else if (!is_name && (data[i] == '\r' || data[i] == '\n' || (i + 1) == size))
+        else if (!is_name && (data[i] == '\r' || data[i] == '\n'))
         {
-            ULONG length = (((i + 1) == size && data[i] != '\n') ? (i + 1) : i) - j;
+            ULONG length = i - j;
             if (length != 0 && length <= sizeof(buffer))
             {
                 NTSTATUS status = RtlUTF8ToUnicodeN((PWCHAR)buffer,
@@ -636,7 +636,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-    PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN);
+    PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN + 1);
     if (not buffer)
     {
         KdPrint(("Failed to allocate memory\n"));
@@ -662,14 +662,15 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
     {
         KdPrint(("Number of bytes read: %lu\n", num_bytes));
 
-        parseConfigData(buffer, num_bytes);
+        buffer[num_bytes] = '\n';
+        parseConfigData(buffer, num_bytes + 1);
 
-        MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
+        MmFreeNonCachedMemory(buffer, MAX_FILE_LEN + 1);
 
         return TRUE;
     }
 
-    MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
+    MmFreeNonCachedMemory(buffer, MAX_FILE_LEN + 1);
 
 End:
     uninitializeFileBlocker();
