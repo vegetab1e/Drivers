@@ -160,10 +160,9 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     if (not checkOsVersion())
     {
         KdPrint(("Failed to check OS version\n"));
-        return STATUS_DRIVER_INTERNAL_ERROR;
+        return STATUS_INCOMPATIBLE_DRIVER_BLOCKED;
     }
 
-    //
     fb_props.mutex = ExAllocatePool2(POOL_FLAG_NON_PAGED,
                                      sizeof(FAST_MUTEX),
                                      '1gaT');
@@ -174,7 +173,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     }
 
     ExInitializeFastMutex(fb_props.mutex);
-    //
 
     if (not initializeFileBlocker(driver_object, registry_key_path))
     {
@@ -274,7 +272,9 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
         KdPrint(("Filter unregistered\n"));
     }
 
-    ExFreePool(fb_props.mutex);
+    if (fb_props.mutex)
+        ExFreePool(fb_props.mutex);
+
     uninitializeFileBlocker();
 
     KdPrint(("Driver unloaded\n"));
@@ -361,8 +361,6 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 #endif
-
-    FLT_ASSERT(io_parameter_block->TargetFileObject == related_objects->FileObject);
 
     PFLT_PARAMETERS parameters = &io_parameter_block->Parameters;
     if (io_parameter_block->MajorFunction == IRP_MJ_SET_INFORMATION)
@@ -485,6 +483,9 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
                  callback_data->Iopb->Parameters.SetFileInformation.FileInformationClass));
     }
 #endif
+
+    FLT_ASSERTMSG("RELATED OBJECTS MISMATCH", io_parameter_block->TargetFileObject ==
+                                              related_objects->FileObject);
 
     PFILE_OBJECT file_object = io_parameter_block->TargetFileObject;
     if (not file_object)
