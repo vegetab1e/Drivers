@@ -16,6 +16,7 @@
 #define OS_BUILD_NUMBER  19041UL
 
 #define MAX_PATH_LEN    256U
+// Один байт зарезервирован!
 #define MAX_FILE_LEN   1024U
 #define MAX_STRING_LEN  256U
 
@@ -520,9 +521,9 @@ static BOOLEAN checkConfigFile(_In_ HANDLE config_file_handle)
     return TRUE;
 }
 
-static ULONG readConfigFile(_In_ HANDLE config_file_handle,
-                            _Out_writes_bytes_(length) PCHAR buffer,
-                            _In_ ULONG length)
+static BOOLEAN readConfigFile(_In_ HANDLE config_file_handle,
+                              _Out_writes_bytes_(*length) PCHAR buffer,
+                              _Inout_ PULONG length)
 {
     LARGE_INTEGER offset = {
         .QuadPart = 0
@@ -535,16 +536,18 @@ static ULONG readConfigFile(_In_ HANDLE config_file_handle,
                                  NULL,
                                  &io_status_block,
                                  buffer,
-                                 length,
+                                 *length,
                                  &offset,
                                  NULL);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to read file: 0x%08X\n", status));
-        return 0;
+        return FALSE;
     }
 
-    return (ULONG)io_status_block.Information;
+    *length = (ULONG)io_status_block.Information;
+
+    return TRUE;
 }
 
 _Use_decl_annotations_
@@ -594,9 +597,9 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
 #ifdef USE_FULL_CONFIG_PATH
     UNICODE_STRING config_file_path;
-    CONST BOOLEAN result = getConfigFilePath(root_directory_handle,
-                                             &config_file_name,
-                                             &config_file_path);
+    BOOLEAN result = getConfigFilePath(root_directory_handle,
+                                       &config_file_name,
+                                       &config_file_path);
 
     ZwClose(root_directory_handle);
 
@@ -641,7 +644,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-    PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN + 1);
+    PCHAR buffer = MmAllocateNonCachedMemory(MAX_FILE_LEN);
     if (not buffer)
     {
         KdPrint(("Failed to allocate memory\n"));
@@ -654,28 +657,29 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         goto End;
     }
 
-    CONST ULONG num_bytes = readConfigFile(config_file_handle,
-                                           buffer,
-                                           MAX_FILE_LEN);
+    ULONG num_bytes = MAX_FILE_LEN - 1;
+    result = readConfigFile(config_file_handle,
+                            buffer,
+                            &num_bytes);
 
     ZwClose(config_file_handle);
 #if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
     ZwClose(root_directory_handle);
 #endif
 
-    if (num_bytes)
+    if (result)
     {
         KdPrint(("Number of bytes read: %lu\n", num_bytes));
 
-        buffer[num_bytes] = '\n';
-        parseConfigData(buffer, num_bytes + 1);
+        buffer[num_bytes++] = '\n';
+        parseConfigData(buffer, num_bytes);
 
-        MmFreeNonCachedMemory(buffer, MAX_FILE_LEN + 1);
+        MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
 
         return TRUE;
     }
 
-    MmFreeNonCachedMemory(buffer, MAX_FILE_LEN + 1);
+    MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
 
 End:
     uninitializeFileBlocker();
