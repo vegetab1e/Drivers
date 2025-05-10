@@ -14,6 +14,9 @@ typedef struct _FILE_BLOCKER_PROPERTIES
     PKTHREAD thread;
     PFAST_MUTEX mutex;
     PFLT_FILTER filter;
+#ifdef USE_FLT_INSTEAD_ZW
+    PFLT_CONTEXT context;
+#endif
     USHORT num_flt_instances;
     PFLT_INSTANCE flt_instances[MAX_FLT_INSTANCES];
     PFLT_PORT server_port;
@@ -144,6 +147,17 @@ static CONST FLT_OPERATION_REGISTRATION callbacks[] = {
 };
 
 static CONST FLT_CONTEXT_REGISTRATION contexts[] = {
+#ifdef USE_FLT_INSTEAD_ZW
+    { FLT_SECTION_CONTEXT,
+      0,
+      NULL,
+      FLT_VARIABLE_SIZED_CONTEXTS,
+      '1gaT',
+      NULL,
+      NULL,
+      NULL},
+#endif
+
     { FLT_CONTEXT_END }
 };
 
@@ -215,6 +229,24 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
 
     KdPrint(("Filter registered\n"));
 
+#ifdef USE_FLT_INSTEAD_ZW
+    status = FltAllocateContext(fb_props.filter,
+                                FLT_SECTION_CONTEXT,
+                                MAXUSHORT,
+                                NonPagedPool,
+                                &fb_props.context);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to allocate context\n"));
+
+        FltUnregisterFilter(fb_props.filter);
+        ExFreePool(fb_props.mutex);
+        uninitializeFileBlocker();
+
+        return status;
+    }
+#endif
+
     PSECURITY_DESCRIPTOR security_descriptor;
     status = FltBuildDefaultSecurityDescriptor(&security_descriptor, FLT_PORT_ALL_ACCESS);
     if (not NT_SUCCESS(status))
@@ -222,6 +254,9 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to build security descriptor\n"));
 
         FltUnregisterFilter(fb_props.filter);
+#ifdef USE_FLT_INSTEAD_ZW
+        FltReleaseContext(fb_props.context);
+#endif
         ExFreePool(fb_props.mutex);
         uninitializeFileBlocker();
 
@@ -251,6 +286,9 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to create communication port\n"));
 
         FltUnregisterFilter(fb_props.filter);
+#ifdef USE_FLT_INSTEAD_ZW
+        FltReleaseContext(fb_props.context);
+#endif
         ExFreePool(fb_props.mutex);
         uninitializeFileBlocker();
 
@@ -263,6 +301,9 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to start filtering\n"));
 
         FltUnregisterFilter(fb_props.filter);
+#ifdef USE_FLT_INSTEAD_ZW
+        FltReleaseContext(fb_props.context);
+#endif
         ExFreePool(fb_props.mutex);
         uninitializeFileBlocker();
 
@@ -288,6 +329,11 @@ VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 
         KdPrint(("Filter unregistered\n"));
     }
+
+#ifdef USE_FLT_INSTEAD_ZW
+    if (fb_props.context)
+        FltReleaseContext(fb_props.context);
+#endif
 
     if (fb_props.mutex)
         ExFreePool(fb_props.mutex);
@@ -357,6 +403,16 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
         KdPrint(("WARNING: Instance already exists!\n"));
     
     ExReleaseFastMutex(fb_props.mutex);
+
+#ifdef USE_FLT_INSTEAD_ZW
+    NTSTATUS status = FltRegisterForDataScan(related_objects->Instance);
+    if (not NT_SUCCESS(status))
+        KdPrint(("Failed to register for data scan: 0x%08X\n", status));
+    else
+        /* If FltRegisterForDataScan returns STATUS_NOT_SUPPORTED, a
+           minifilter can still create sections for data scanning by
+           calling FsRtlCreateSectionForDataScan. */;
+#endif
 
     KdPrint(("Filter loaded (device/filesystem types): %lu/%i\n",
              device_type, filesystem_type));
@@ -566,7 +622,11 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (isTextBlocked(file_name_info->Name, related_objects))
+#ifdef USE_FLT_INSTEAD_ZW
+    if (isTextBlocked(file_name_info->Name, related_objects, fb_props.context))
+#else
+    if (isTextBlocked(file_name_info->Name))
+#endif
     {
         KdPrint(("Blocking operation on file: %wZ\n", &file_name_info->Name));
 

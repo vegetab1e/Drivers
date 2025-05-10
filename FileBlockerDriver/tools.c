@@ -1,5 +1,12 @@
 // Порядок подключения заголовочных файлов важен!
+#ifdef USE_FLT_INSTEAD_ZW
+// Подгружает ntifs.h
 #include <fltKernel.h>
+#else
+#if !defined(USE_DEFAULT_CONFIG_PATH) && defined(USE_FULL_CONFIG_PATH)
+#include <ntifs.h>
+#endif // !USE_DEFAULT_CONFIG_PATH && USE_FULL_CONFIG_PATH
+#endif // USE_FLT_INSTEAD_ZW
 #include <ntstrsafe.h>
 #include <ntddk.h>
 
@@ -469,17 +476,12 @@ static BOOLEAN openConfigFile(_In_opt_ HANDLE root_directory_handle,
                                NULL);
 
     IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = ZwCreateFile(config_file_handle,
-                                   FILE_READ_DATA,
-                                   &object_attributes,
-                                   &io_status_block,
-                                   NULL,
-                                   FILE_ATTRIBUTE_NORMAL,
-                                   FILE_SHARE_READ,
-                                   FILE_OPEN,
-                                   FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
-                                   NULL,
-                                   0);
+    NTSTATUS status = ZwOpenFile(config_file_handle,
+                                 FILE_READ_DATA,
+                                 &object_attributes,
+                                 &io_status_block,
+                                 FILE_SHARE_READ,
+                                 FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
@@ -752,9 +754,130 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
     return FALSE;
 }
 
+#ifndef USE_FLT_INSTEAD_ZW
+_Use_decl_annotations_
+BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
+{
+    if ((file_name.Buffer == NULL) ||
+        (file_name.Length == 0))
+        return FALSE;
+
+    OBJECT_ATTRIBUTES object_attributes;
+    InitializeObjectAttributes(&object_attributes,
+                               &file_name,
+                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
+
+    HANDLE file_handle;
+    IO_STATUS_BLOCK io_status_block;
+    NTSTATUS status = ZwCreateFile(&file_handle,
+                                   FILE_GENERIC_READ,
+                                   &object_attributes,
+                                   &io_status_block,
+                                   NULL,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   FILE_SHARE_READ | FILE_SHARE_DELETE,
+                                   FILE_OPEN,
+                                   FILE_NON_DIRECTORY_FILE,
+                                   NULL,
+                                   0);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to open file: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    FILE_STANDARD_INFORMATION file_standard_info;
+    status = ZwQueryInformationFile(file_handle,
+                                    &io_status_block,
+                                    &file_standard_info,
+                                    sizeof(file_standard_info),
+                                    FileStandardInformation);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to get file info: 0x%08X\n", status));
+
+        ZwClose(file_handle);
+
+        return FALSE;
+    }
+
+    LARGE_INTEGER max_section_size = {
+        .QuadPart = MIN(file_standard_info.EndOfFile.QuadPart,
+                        fb_config.text_to_block.Length)
+    };
+    HANDLE section_handle;
+    status = ZwCreateSection(&section_handle,
+                             SECTION_MAP_READ,
+                             NULL,
+                             &max_section_size,
+                             PAGE_READONLY,
+                             SEC_COMMIT,
+                             file_handle);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to create section: 0x%08X\n", status));
+
+        ZwClose(file_handle);
+
+        return FALSE;
+    }
+
+    PVOID base_address = NULL;
+    SIZE_T view_size = 0;
+    status = ZwMapViewOfSection(section_handle,
+                                ZwCurrentProcess(),
+                                &base_address,
+                                0,
+                                0,
+                                NULL,
+                                &view_size,
+                                ViewUnmap,
+                                0,
+                                PAGE_READONLY);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to map view: 0x%08X\n", status));
+
+        ZwClose(section_handle);
+        ZwClose(file_handle);
+
+        return FALSE;
+    }
+    
+    UTF8_STRING utf8_string = {
+        .Buffer = (PCHAR)base_address,
+        .Length = (USHORT)max_section_size.QuadPart,
+        .MaximumLength = utf8_string.Length
+    };
+    BOOLEAN should_block = FALSE;
+    UNICODE_STRING unicode_string;
+    status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
+    if (NT_SUCCESS(status))
+    {
+        should_block = RtlPrefixUnicodeString(&fb_config.text_to_block,
+                                              &unicode_string,
+                                              TRUE);
+
+        RtlFreeUnicodeString(&unicode_string);
+    }
+    else
+    {
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
+    }
+
+    ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
+    ZwClose(section_handle);
+    ZwClose(file_handle);
+
+    return should_block;
+}
+#else
 _Use_decl_annotations_
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
-                      _In_ PCFLT_RELATED_OBJECTS related_objects)
+                      _In_ PCFLT_RELATED_OBJECTS related_objects,
+                      _In_ PFLT_CONTEXT context)
 {
     if ((file_name.Buffer == NULL) ||
         (file_name.Length == 0))
@@ -821,17 +944,24 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         .QuadPart = MIN(file_standard_info.EndOfFile.QuadPart,
                         fb_config.text_to_block.Length)
     };
+
+    PVOID section_object;
     HANDLE section_handle;
-    status = ZwCreateSection(&section_handle,
-                             SECTION_MAP_READ,
-                             NULL,
-                             &max_section_size,
-                             PAGE_READONLY,
-                             SEC_COMMIT,
-                             file_handle);
+    status = FltCreateSectionForDataScan(related_objects->Instance,
+                                         related_objects->FileObject,
+                                         context,
+                                         SECTION_MAP_READ,
+                                         NULL,
+                                         &max_section_size,
+                                         PAGE_READONLY,
+                                         SEC_COMMIT,
+                                         0,
+                                         &section_handle,
+                                         &section_object,
+                                         NULL);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to create section: 0x%08X\n", status));
+        KdPrint(("Failed to create section for data scan: 0x%08X\n", status));
 
         FltClose(file_handle);
 
@@ -855,6 +985,10 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         KdPrint(("Failed to map view: 0x%08X\n", status));
 
         ZwClose(section_handle);
+        ObDereferenceObject(section_object);
+        
+        FltCloseSectionForDataScan(context);
+
         FltClose(file_handle);
 
         return FALSE;
@@ -882,11 +1016,19 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     }
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
+
     ZwClose(section_handle);
+    ObDereferenceObject(section_object);
+
+    FltCloseSectionForDataScan(context);
+
+    KdPrint(("THIS\n"));
+    
     FltClose(file_handle);
 
     return should_block;
 }
+#endif
 
 BOOLEAN checkOsVersion()
 {
