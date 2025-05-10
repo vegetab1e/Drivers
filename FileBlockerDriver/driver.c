@@ -5,42 +5,51 @@
 #include "tools.h"
 
 #define RX_BUFFER_SIZE    1024U
-#define MAX_FLT_INSTANCES   32U
+#define MAX_FLT_INSTANCES   64U
 
 static UNICODE_STRING SERVER_PORT_NAME = RTL_CONSTANT_STRING(L"\\FileBlockerFilterPort");
 
 typedef struct _FILE_BLOCKER_PROPERTIES
 {
+    PKTHREAD thread;
+    PFAST_MUTEX mutex;
     PFLT_FILTER filter;
+    USHORT num_flt_instances;
+    PFLT_INSTANCE flt_instances[MAX_FLT_INSTANCES];
     PFLT_PORT server_port;
     PFLT_PORT client_port;
-    USHORT num_instances;
-    PFLT_INSTANCE instances[MAX_FLT_INSTANCES];
-    PFAST_MUTEX mutex;
 } FILE_BLOCKER_PROPERTIES, *PFILE_BLOCKER_PROPERTIES;
 
 static FILE_BLOCKER_PROPERTIES fb_props;
 
 DRIVER_INITIALIZE driverEntry;
-static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object);
-
-static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags);
-static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
-                                   _In_ FLT_INSTANCE_SETUP_FLAGS flags,
-                                   _In_ DEVICE_TYPE  volume_device_yype,
-                                   _In_ FLT_FILESYSTEM_TYPE  volume_filesystem_type);
-
-static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
-                                                      _In_ PCFLT_RELATED_OBJECTS related_objects,
-                                                      _Out_ PVOID* completion_context);
+DRIVER_UNLOAD  driverUnload;
 
 static NTSTATUS
-messageCallback(_In_ PVOID connection_cookie,
-                _In_reads_bytes_opt_(input_buffer_size) PVOID input_buffer,
-                _In_ ULONG input_buffer_size,
-                _Out_writes_bytes_to_opt_(output_buffer_size, *output_buffer_length) PVOID output_buffer,
-                _In_ ULONG output_buffer_size,
-                _Out_ PULONG output_buffer_length)
+FLTAPI filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags);
+
+static NTSTATUS
+FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
+                             _In_ FLT_INSTANCE_SETUP_FLAGS setup_flags,
+                             _In_ DEVICE_TYPE  device_yype,
+                             _In_ FLT_FILESYSTEM_TYPE  filesystem_type);
+
+static NTSTATUS
+FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
+                                     _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS teardown_flags);
+
+static FLT_PREOP_CALLBACK_STATUS
+FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
+                            _In_ PCFLT_RELATED_OBJECTS related_objects,
+                            _Outptr_result_maybenull_ PVOID* completion_context);
+
+static NTSTATUS
+FLTAPI messageCallback(_In_opt_ PVOID connection_cookie,
+                       _In_reads_bytes_opt_(input_buffer_size) PVOID input_buffer,
+                       _In_ ULONG input_buffer_size,
+                       _Out_writes_bytes_to_opt_(output_buffer_size, *output_buffer_length) PVOID output_buffer,
+                       _In_ ULONG output_buffer_size,
+                       _Out_ PULONG output_buffer_length)
 {
     UNREFERENCED_PARAMETER(connection_cookie);
     UNREFERENCED_PARAMETER(output_buffer);
@@ -81,25 +90,25 @@ messageCallback(_In_ PVOID connection_cookie,
     };
     
     KdPrint(("Message: %wZ\n", &message));
-
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS
-connectCallback(_In_ PFLT_PORT client_port,
-                _In_ PVOID server_port_cookie,
-                _In_reads_bytes_(size_of_context) PVOID connection_context,
-                _In_ ULONG size_of_context,
-                _Flt_ConnectionCookie_Outptr_ PVOID* connection_cookie)
+FLTAPI connectCallback(_In_ PFLT_PORT client_port,
+                       _In_opt_ PVOID server_port_cookie,
+                       _In_reads_bytes_opt_(size_of_context) PVOID connection_context,
+                       _In_ ULONG size_of_context,
+                       _Outptr_result_maybenull_ PVOID* connection_cookie)
 {
     UNREFERENCED_PARAMETER(server_port_cookie);
     UNREFERENCED_PARAMETER(connection_context);
     UNREFERENCED_PARAMETER(size_of_context);
-    UNREFERENCED_PARAMETER(connection_cookie);
 
     PAGED_CODE();
 
     KdPrint(("connectCallback() called\n"));
+
+    *connection_cookie = NULL;
 
     FLT_ASSERT(not fb_props.client_port);
     fb_props.client_port = client_port;
@@ -108,7 +117,7 @@ connectCallback(_In_ PFLT_PORT client_port,
 }
 
 static VOID
-disconnectCallback(_In_opt_ PVOID connection_cookie)
+FLTAPI disconnectCallback(_In_opt_ PVOID connection_cookie)
 {
     UNREFERENCED_PARAMETER(connection_cookie);
 
@@ -145,7 +154,13 @@ static CONST FLT_REGISTRATION filter_registration = {
     contexts,
     callbacks,
     filterUnloadCallback,
-    filterLoadCallback,
+    instanceSetupCallback,
+    instanceQueryTeardownCallback,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
     NULL,
     NULL,
     NULL
@@ -160,10 +175,11 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     if (not checkOsVersion())
     {
         KdPrint(("Failed to check OS version\n"));
-        return STATUS_DRIVER_INTERNAL_ERROR;
+        return STATUS_INCOMPATIBLE_DRIVER_BLOCKED;
     }
 
-    //
+    fb_props.thread = KeGetCurrentThread();
+
     fb_props.mutex = ExAllocatePool2(POOL_FLAG_NON_PAGED,
                                      sizeof(FAST_MUTEX),
                                      '1gaT');
@@ -174,7 +190,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     }
 
     ExInitializeFastMutex(fb_props.mutex);
-    //
 
     if (not initializeFileBlocker(driver_object, registry_key_path))
     {
@@ -254,13 +269,13 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         return status;
     }
 
-    KdPrint(("Filtering started\n"));
-    KdPrint(("Driver loaded\n"));
+    KdPrint(("Filtering started\n" \
+             "Driver loaded\n"));
     return status;
 }
 
 _Use_decl_annotations_
-static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
+VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 {
     UNREFERENCED_PARAMETER(driver_object);
 
@@ -274,14 +289,17 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
         KdPrint(("Filter unregistered\n"));
     }
 
-    ExFreePool(fb_props.mutex);
+    if (fb_props.mutex)
+        ExFreePool(fb_props.mutex);
+
     uninitializeFileBlocker();
 
     KdPrint(("Driver unloaded\n"));
 }
 
 _Use_decl_annotations_
-static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS unload_flags)
+static NTSTATUS
+FLTAPI filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS unload_flags)
 {
     UNREFERENCED_PARAMETER(unload_flags);
 
@@ -292,21 +310,28 @@ static NTSTATUS filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS unload_flags)
 }
 
 _Use_decl_annotations_
-static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
-                                   _In_ FLT_INSTANCE_SETUP_FLAGS setup_flags,
-                                   _In_ DEVICE_TYPE device_type,
-                                   _In_ FLT_FILESYSTEM_TYPE filesystem_type)
+static NTSTATUS
+FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
+                             _In_ FLT_INSTANCE_SETUP_FLAGS setup_flags,
+                             _In_ DEVICE_TYPE device_type,
+                             _In_ FLT_FILESYSTEM_TYPE filesystem_type)
 {
-    UNREFERENCED_PARAMETER(setup_flags);
-#ifdef NDEBUG
-    UNREFERENCED_PARAMETER(filesystem_type);
-#endif
-
     PAGED_CODE();
 
     FLT_ASSERT(fb_props.filter == related_objects->Filter);
 
-    if (device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM)
+    if ((ULONG_PTR)fb_props.thread != ExGetCurrentResourceThread())
+        KdPrint(("WARNING: Multithreading detected!\n" \
+                 "Main thread ID: %llu\n" \
+                 "This thread ID: %llu\n",
+                 (ULONG_PTR)fb_props.thread,
+                 ExGetCurrentResourceThread()));
+
+    KdPrint(("Setup flags: 0x%08X\n", setup_flags));
+
+    if (device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM or
+        (filesystem_type not_eq FLT_FSTYPE_NTFS and
+         filesystem_type not_eq FLT_FSTYPE_FAT))
     {
         KdPrint(("Filter not loaded (device/filesystem types): %lu/%i\n",
                  device_type, filesystem_type));
@@ -315,10 +340,21 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
 
     KdPrint(("Filter instance: %p\n", related_objects->Instance));
     
+    // Может вызываться и вызывается из
+    // разных потоков (картинку выложу)
     ExAcquireFastMutex(fb_props.mutex);
 
-    FLT_ASSERT(fb_props.num_instances < MAX_FLT_INSTANCES);
-    fb_props.instances[fb_props.num_instances++] = related_objects->Instance;
+    FLT_ASSERT(fb_props.num_flt_instances < MAX_FLT_INSTANCES);
+
+    USHORT index = 0;
+    for (; index < fb_props.num_flt_instances; ++index)
+        if (fb_props.flt_instances[index] == related_objects->Instance)
+            break;
+
+    if (index == fb_props.num_flt_instances)
+        fb_props.flt_instances[fb_props.num_flt_instances++] = related_objects->Instance;
+    else
+        KdPrint(("WARNING: Instance already exists!\n"));
     
     ExReleaseFastMutex(fb_props.mutex);
 
@@ -328,9 +364,21 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
 }
 
 _Use_decl_annotations_
-static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
-                                                      _In_ PCFLT_RELATED_OBJECTS related_objects,
-                                                      _Out_ PVOID* completion_context)
+static NTSTATUS
+FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
+                                     _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS teardown_flags)
+{
+    UNREFERENCED_PARAMETER(related_objects);
+    UNREFERENCED_PARAMETER(teardown_flags);
+
+    return STATUS_SUCCESS;
+}
+
+_Use_decl_annotations_
+static FLT_PREOP_CALLBACK_STATUS
+FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
+                            _In_ PCFLT_RELATED_OBJECTS related_objects,
+                            _Outptr_result_maybenull_ PVOID* completion_context)
 {
     PAGED_CODE();
 
@@ -361,8 +409,6 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 #endif
-
-    FLT_ASSERT(io_parameter_block->TargetFileObject == related_objects->FileObject);
 
     PFLT_PARAMETERS parameters = &io_parameter_block->Parameters;
     if (io_parameter_block->MajorFunction == IRP_MJ_SET_INFORMATION)
@@ -468,6 +514,10 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     if (related_objects->FileObject)
         KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ\n",
                  &related_objects->FileObject->FileName));
+
+    if (callback_data->Iopb->TargetFileObject && related_objects->FileObject)
+        FLT_ASSERTMSG("OBJECTS MISMATCH", callback_data->Iopb->TargetFileObject ==
+                                          related_objects->FileObject);
     
     if (callback_data->Iopb->MajorFunction == IRP_MJ_CREATE)
     {
