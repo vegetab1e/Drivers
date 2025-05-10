@@ -666,17 +666,13 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
         MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
 
-        KdPrint(("Extension to block: \"%wZ\"\n", &file_blocker_config.ext_to_block));
-        KdPrint(("Text to block: \"%wZ\"\n", &file_blocker_config.text_to_block));
-
         return TRUE;
     }
 
     MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
 
 End:
-    freeUnicodeString(&file_blocker_config.ext_to_block);
-    freeUnicodeString(&file_blocker_config.text_to_block);
+    uninitializeFileBlocker();
 
     return FALSE;
 }
