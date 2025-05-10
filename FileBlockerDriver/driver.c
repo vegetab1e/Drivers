@@ -282,7 +282,7 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
 }
 
 _Use_decl_annotations_
-static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
+static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
                                                       _In_ PCFLT_RELATED_OBJECTS related_objects,
                                                       _Out_ PVOID* completion_context)
 {
@@ -291,23 +291,23 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     if (completion_context)
         *completion_context = NULL;
 
-    if (not data or
+    if (not callback_data or
         not related_objects)
     {
         KdPrint(("WARNING: Null pointer catched!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (not FLT_IS_IRP_OPERATION(data))
+    if (not FLT_IS_IRP_OPERATION(callback_data))
     {
         KdPrint(("WARNING: This is not IRP operation!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    if (data->RequestorMode == KernelMode)
+    if (callback_data->RequestorMode == KernelMode)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    PFLT_IO_PARAMETER_BLOCK io_parameter_block = data->Iopb;
+    PFLT_IO_PARAMETER_BLOCK io_parameter_block = callback_data->Iopb;
 #ifdef PARANOID_MODE
     if (not io_parameter_block)
     {
@@ -414,29 +414,29 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     // в нём не используются, а проверки могут быть избыточны.
 #ifndef NDEBUG
     KdPrint(("Callback called: 0x%08X\n",
-             data->Iopb->MajorFunction));
+             callback_data->Iopb->MajorFunction));
 
-    if (data->Iopb->TargetFileObject)
+    if (callback_data->Iopb->TargetFileObject)
         KdPrint(("[FLT_CALLBACK_DATA] FileName: %wZ\n",
-                 &data->Iopb->TargetFileObject->FileName));
+                 &callback_data->Iopb->TargetFileObject->FileName));
     if (related_objects->FileObject)
         KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ\n",
                  &related_objects->FileObject->FileName));
     
-    if (data->Iopb->MajorFunction == IRP_MJ_CREATE)
+    if (callback_data->Iopb->MajorFunction == IRP_MJ_CREATE)
     {
         // The high 8 bits contains the CreateDisposition values.
         KdPrint(("[IRP_MJ_CREATE] CreateDisposition: 0x%08X\n",
-                 data->Iopb->Parameters.Create.Options >> 24));
+                 callback_data->Iopb->Parameters.Create.Options >> 24));
         // The low 24 bits contains CreateOptions flag values.
         KdPrint(("[IRP_MJ_CREATE] CreateOptions: 0x%08X\n",
-                 data->Iopb->Parameters.Create.Options & 0x00FFFFFF));
+                 callback_data->Iopb->Parameters.Create.Options & 0x00FFFFFF));
     }
     else
-    if (data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION)
+    if (callback_data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION)
     {
         KdPrint(("[IRP_MJ_SET_INFORMATION] FileInformationClass: %i\n",
-                 data->Iopb->Parameters.SetFileInformation.FileInformationClass));
+                 callback_data->Iopb->Parameters.SetFileInformation.FileInformationClass));
     }
 #endif
 
@@ -454,7 +454,7 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
     }
 
     PFLT_FILE_NAME_INFORMATION file_name_info = NULL;
-    NTSTATUS status = FltGetFileNameInformation(data,
+    NTSTATUS status = FltGetFileNameInformation(callback_data,
                                                 FLT_FILE_NAME_NORMALIZED,
                                                 &file_name_info);
 #ifdef PARANOID_MODE
@@ -476,8 +476,8 @@ static FLT_PREOP_CALLBACK_STATUS preOperationCallback(_Inout_ PFLT_CALLBACK_DATA
 
         FltReleaseFileNameInformation(file_name_info);
                 
-        data->IoStatus.Status = STATUS_ACCESS_DENIED;
-        data->IoStatus.Information = 0;
+        callback_data->IoStatus.Status = STATUS_ACCESS_DENIED;
+        callback_data->IoStatus.Information = 0;
 
         return FLT_PREOP_COMPLETE;
     }
