@@ -16,6 +16,7 @@ typedef struct _FILE_BLOCKER_PROPERTIES
     PFLT_PORT client_port;
     USHORT num_instances;
     PFLT_INSTANCE instances[MAX_FLT_INSTANCES];
+    PFAST_MUTEX mutex;
 } FILE_BLOCKER_PROPERTIES, *PFILE_BLOCKER_PROPERTIES;
 
 static FILE_BLOCKER_PROPERTIES fb_props;
@@ -162,9 +163,25 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         return STATUS_DRIVER_INTERNAL_ERROR;
     }
 
+    //
+    fb_props.mutex = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                     sizeof(FAST_MUTEX),
+                                     '1gaT');
+    if (not fb_props.mutex)
+    {
+        KdPrint(("Failed to allocate memory\n"));
+        return STATUS_NO_MEMORY;
+    }
+
+    ExInitializeFastMutex(fb_props.mutex);
+    //
+
     if (not initializeFileBlocker(driver_object, registry_key_path))
     {
         KdPrint(("Initialization failed\n"));
+
+        ExFreePool(fb_props.mutex);
+        
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 
@@ -174,6 +191,10 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to register filter\n"));
+
+        ExFreePool(fb_props.mutex);
+        uninitializeFileBlocker();
+
         return status;
     }
 
@@ -184,6 +205,11 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to build security descriptor\n"));
+
+        FltUnregisterFilter(fb_props.filter);
+        ExFreePool(fb_props.mutex);
+        uninitializeFileBlocker();
+
         return status;
     }
 
@@ -208,6 +234,11 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to create communication port\n"));
+
+        FltUnregisterFilter(fb_props.filter);
+        ExFreePool(fb_props.mutex);
+        uninitializeFileBlocker();
+
         return status;
     }
 
@@ -217,8 +248,9 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to start filtering\n"));
 
         FltUnregisterFilter(fb_props.filter);
+        ExFreePool(fb_props.mutex);
+        uninitializeFileBlocker();
 
-        KdPrint(("Filter unregistered\n"));
         return status;
     }
 
@@ -242,6 +274,7 @@ static VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
         KdPrint(("Filter unregistered\n"));
     }
 
+    ExFreePool(fb_props.mutex);
     uninitializeFileBlocker();
 
     KdPrint(("Driver unloaded\n"));
@@ -271,6 +304,8 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
 
     PAGED_CODE();
 
+    FLT_ASSERT(fb_props.filter == related_objects->Filter);
+
     if (device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM)
     {
         KdPrint(("Filter not loaded (device/filesystem types): %lu/%i\n",
@@ -278,11 +313,14 @@ static NTSTATUS filterLoadCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
         return STATUS_FLT_DO_NOT_ATTACH;
     }
 
-    FLT_ASSERT(fb_props.filter == related_objects->Filter);
-    FLT_ASSERT(fb_props.num_instances < MAX_FLT_INSTANCES);
-
     KdPrint(("Filter instance: %p\n", related_objects->Instance));
+    
+    ExAcquireFastMutex(fb_props.mutex);
+
+    FLT_ASSERT(fb_props.num_instances < MAX_FLT_INSTANCES);
     fb_props.instances[fb_props.num_instances++] = related_objects->Instance;
+    
+    ExReleaseFastMutex(fb_props.mutex);
 
     KdPrint(("Filter loaded (device/filesystem types): %lu/%i\n",
              device_type, filesystem_type));
