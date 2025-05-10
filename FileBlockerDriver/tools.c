@@ -760,6 +760,17 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         (file_name.Length == 0))
         return FALSE;
 
+#ifdef PARANOID_MODE
+    if (not related_objects or
+        not related_objects->Filter or
+        not related_objects->Instance or
+        not related_objects->FileObject)
+    {
+        KdPrint(("WARNING: Null pointer catched!\n"));
+        return FALSE;
+    }
+#endif
+
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
                                &file_name,
@@ -790,11 +801,13 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     }
 
     FILE_STANDARD_INFORMATION file_standard_info;
-    status = ZwQueryInformationFile(file_handle,
-                                    &io_status_block,
-                                    &file_standard_info,
-                                    sizeof(file_standard_info),
-                                    FileStandardInformation);
+    // The file must currently be open.
+    status = FltQueryInformationFile(related_objects->Instance,
+                                     related_objects->FileObject,
+                                     &file_standard_info,
+                                     sizeof(file_standard_info),
+                                     FileStandardInformation,
+                                     NULL);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
