@@ -876,8 +876,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 #else
 _Use_decl_annotations_
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
-                      _In_ PCFLT_RELATED_OBJECTS related_objects,
-                      _In_ PFLT_CONTEXT context)
+                      _In_ PCFLT_RELATED_OBJECTS related_objects)
 {
     if ((file_name.Buffer == NULL) ||
         (file_name.Length == 0))
@@ -900,7 +899,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
                                NULL,
                                NULL);
-
+    /*
     HANDLE file_handle;
     IO_STATUS_BLOCK io_status_block;
     NTSTATUS status = FltCreateFile(related_objects->Filter,
@@ -922,20 +921,34 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         KdPrint(("Failed to open file: 0x%08X\n", status));
         return FALSE;
     }
-
+    */
     FILE_STANDARD_INFORMATION file_standard_info;
-    // The file must currently be open.
-    status = FltQueryInformationFile(related_objects->Instance,
-                                     related_objects->FileObject,
-                                     &file_standard_info,
-                                     sizeof(file_standard_info),
-                                     FileStandardInformation,
-                                     NULL);
+    NTSTATUS status = FltQueryInformationFile(related_objects->Instance,
+                                              related_objects->FileObject,
+                                              &file_standard_info,
+                                              sizeof(file_standard_info),
+                                              FileStandardInformation,
+                                              NULL);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
 
-        FltClose(file_handle);
+      //FltClose(file_handle);
+
+        return FALSE;
+    }
+
+    PFLT_CONTEXT section_context;
+    status = FltAllocateContext(related_objects->Filter,
+                                FLT_SECTION_CONTEXT,
+                                MAXUSHORT,
+                                NonPagedPool,
+                                &section_context);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to allocate context\n"));
+
+      //FltClose(file_handle);
 
         return FALSE;
     }
@@ -949,7 +962,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     HANDLE section_handle;
     status = FltCreateSectionForDataScan(related_objects->Instance,
                                          related_objects->FileObject,
-                                         context,
+                                         section_context,
                                          SECTION_MAP_READ,
                                          NULL,
                                          &max_section_size,
@@ -963,7 +976,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     {
         KdPrint(("Failed to create section for data scan: 0x%08X\n", status));
 
-        FltClose(file_handle);
+      //FltClose(file_handle);
 
         return FALSE;
     }
@@ -987,9 +1000,10 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         ZwClose(section_handle);
         ObDereferenceObject(section_object);
         
-        FltCloseSectionForDataScan(context);
+        FltCloseSectionForDataScan(section_context);
+        FltReleaseContext(section_context);
 
-        FltClose(file_handle);
+      //FltClose(file_handle);
 
         return FALSE;
     }
@@ -1015,16 +1029,23 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         KdPrint(("Failed to convert string: 0x%08X\n", status));
     }
 
-    ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
+    status = ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
+    if (not NT_SUCCESS(status))
+        KdPrint(("Failed to unmap view of section: 0x%08X\n", status));
 
-    ZwClose(section_handle);
+    status = ZwClose(section_handle);
+    if (not NT_SUCCESS(status))
+        KdPrint(("Failed to close section handle: 0x%08X\n", status));
+
     ObDereferenceObject(section_object);
 
-    FltCloseSectionForDataScan(context);
+    status = FltCloseSectionForDataScan(section_context);
+    if (not NT_SUCCESS(status))
+        KdPrint(("Failed to close section context: 0x%08X\n", status));
 
-    KdPrint(("THIS\n"));
+    FltReleaseContext(section_context);
     
-    FltClose(file_handle);
+  //FltClose(file_handle);
 
     return should_block;
 }

@@ -70,3 +70,5 @@
 ***Минимальная поддерживаемая версия ОС - Windows 10 build 19041***. В версиях младше работать не будет из-за используемой в коде функции [`ExAllocatePool2`](https://www.learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exallocatepool2). В коде есть проверка версии ОС.
 
 Также в этом репозитории есть проект приложения для управления фильтром из консоли (в юзер мод), но он практически пустой (при [его](FilterControl/control/FilterControl.exe) запуске на виртуалке не забываем про [редисты](FilterControl/control/vc_redist_2015-2022_14.42.34438.0_x64.exe)).
+
+***Пока макрос USE_FLT_INSTEAD_ZW использовать нельзя!***

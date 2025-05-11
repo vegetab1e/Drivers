@@ -14,9 +14,6 @@ typedef struct _FILE_BLOCKER_PROPERTIES
     PKTHREAD thread;
     PFAST_MUTEX mutex;
     PFLT_FILTER filter;
-#ifdef USE_FLT_INSTEAD_ZW
-    PFLT_CONTEXT context;
-#endif
     USHORT num_flt_instances;
     PFLT_INSTANCE flt_instances[MAX_FLT_INSTANCES];
     PFLT_PORT server_port;
@@ -229,24 +226,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
 
     KdPrint(("Filter registered\n"));
 
-#ifdef USE_FLT_INSTEAD_ZW
-    status = FltAllocateContext(fb_props.filter,
-                                FLT_SECTION_CONTEXT,
-                                MAXUSHORT,
-                                NonPagedPool,
-                                &fb_props.context);
-    if (not NT_SUCCESS(status))
-    {
-        KdPrint(("Failed to allocate context\n"));
-
-        FltUnregisterFilter(fb_props.filter);
-        ExFreePool(fb_props.mutex);
-        uninitializeFileBlocker();
-
-        return status;
-    }
-#endif
-
     PSECURITY_DESCRIPTOR security_descriptor;
     status = FltBuildDefaultSecurityDescriptor(&security_descriptor, FLT_PORT_ALL_ACCESS);
     if (not NT_SUCCESS(status))
@@ -254,9 +233,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to build security descriptor\n"));
 
         FltUnregisterFilter(fb_props.filter);
-#ifdef USE_FLT_INSTEAD_ZW
-        FltReleaseContext(fb_props.context);
-#endif
         ExFreePool(fb_props.mutex);
         uninitializeFileBlocker();
 
@@ -286,9 +262,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to create communication port\n"));
 
         FltUnregisterFilter(fb_props.filter);
-#ifdef USE_FLT_INSTEAD_ZW
-        FltReleaseContext(fb_props.context);
-#endif
         ExFreePool(fb_props.mutex);
         uninitializeFileBlocker();
 
@@ -301,9 +274,6 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to start filtering\n"));
 
         FltUnregisterFilter(fb_props.filter);
-#ifdef USE_FLT_INSTEAD_ZW
-        FltReleaseContext(fb_props.context);
-#endif
         ExFreePool(fb_props.mutex);
         uninitializeFileBlocker();
 
@@ -329,11 +299,6 @@ VOID driverUnload(_In_ PDRIVER_OBJECT driver_object)
 
         KdPrint(("Filter unregistered\n"));
     }
-
-#ifdef USE_FLT_INSTEAD_ZW
-    if (fb_props.context)
-        FltReleaseContext(fb_props.context);
-#endif
 
     if (fb_props.mutex)
         ExFreePool(fb_props.mutex);
@@ -623,7 +588,7 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
     }
 
 #ifdef USE_FLT_INSTEAD_ZW
-    if (isTextBlocked(file_name_info->Name, related_objects, fb_props.context))
+    if (isTextBlocked(file_name_info->Name, related_objects))
 #else
     if (isTextBlocked(file_name_info->Name))
 #endif
