@@ -407,7 +407,13 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
         *completion_context = NULL;
 
     if (not callback_data or
-        not related_objects)
+        not related_objects
+#ifdef PARANOID_MODE
+        or not callback_data->Iopb
+        or not callback_data->Iopb->TargetFileObject
+        or not related_objects->Instance
+#endif
+        )
     {
         KdPrint(("WARNING: Null pointer catched!\n"));
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -423,12 +429,19 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
     PFLT_IO_PARAMETER_BLOCK io_parameter_block = callback_data->Iopb;
-#ifdef PARANOID_MODE
-    if (not io_parameter_block)
-    {
-        KdPrint(("WARNING: Iopb is null!\n"));
+
+    // Удаление файла в корзину (второй этап, поздно блокировать)
+    // Эта проверка дублируется без использования FILE_OBJECT
+    if (io_parameter_block->TargetFileObject->DeletePending)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+
+#ifdef NEW_FEATURES_TESTING
+    // НЕ файл
+    // Эта проверка дублируется отдельно IRP_MJ_CREATE без использования FILE_OBJECT
+    // и для IRP_MJ_SET_INFORMATION с использованием предварительно открытого (!) FILE_OBJECT
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_file_object
+    if (io_parameter_block->TargetFileObject->Type != 5)
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
 #endif
 
     PFLT_PARAMETERS parameters = &io_parameter_block->Parameters;
@@ -489,12 +502,11 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
         }
 
         BOOLEAN is_directory = FALSE;
-        NTSTATUS status = STATUS_INVALID_PARAMETER;
         // WARNING: This routine can only be called on an opened file object!
-        if (not (related_objects->FileObject && related_objects->Instance) ||
-            not NT_SUCCESS(status = FltIsDirectory(related_objects->FileObject,
-                                                   related_objects->Instance,
-                                                   &is_directory)))
+        NTSTATUS status = FltIsDirectory(io_parameter_block->TargetFileObject,
+                                         related_objects->Instance,
+                                         &is_directory);
+        if (not NT_SUCCESS(status))
         {
             KdPrint(("Failed to check file object type: 0x%08X\n", status));
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -516,11 +528,10 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
 #ifdef NEW_FEATURES_TESTING
-        // гарантирует, что все операции с файлом выполняются последовательно (синхронность)
-        if ((create_options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) or
-            (create_options & FILE_WRITE_THROUGH) or           // про запись
-            (create_options & FILE_DELETE_ON_CLOSE))           // про удаление (не в корзину)
-                                                               // и временные файлы
+        if ((create_options & (FILE_SYNCHRONOUS_IO_ALERT |       // все операции с файлом
+                               FILE_SYNCHRONOUS_IO_NONALERT)) or // выполняются синхронно
+            (create_options & FILE_WRITE_THROUGH) or             // сквозная запись файлов (lazy-write off)
+            (create_options & FILE_DELETE_ON_CLOSE))             // про удаление (не в корзину) и временные файлы
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
 #endif
 
@@ -583,13 +594,6 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
     NTSTATUS status = FltGetFileNameInformation(callback_data,
                                                 FLT_FILE_NAME_NORMALIZED,
                                                 &file_name_info);
-#ifdef PARANOID_MODE
-    if (not file_name_info)
-    {
-        KdPrint(("WARNING: FltGetFileNameInformation() out parameter is null!\n"));
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-#endif
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file name info: 0x%08X\n", status));
@@ -597,7 +601,6 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
     }
 
 #ifdef USE_FLT_INSTEAD_ZW
-    // Файл должен быть уже открыт
     if ((io_parameter_block->MajorFunction == IRP_MJ_SET_INFORMATION &&
          isTextBlocked2(related_objects)) ||
         (io_parameter_block->MajorFunction == IRP_MJ_CREATE &&
