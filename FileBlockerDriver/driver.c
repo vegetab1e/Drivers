@@ -411,6 +411,7 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
 #ifdef PARANOID_MODE
         or not callback_data->Iopb
         or not callback_data->Iopb->TargetFileObject
+        or not related_objects->Filter
         or not related_objects->Instance
 #endif
         )
@@ -602,9 +603,14 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
 
 #ifdef USE_FLT_INSTEAD_ZW
     if ((io_parameter_block->MajorFunction == IRP_MJ_SET_INFORMATION &&
-         isTextBlocked2(related_objects)) ||
+         isTextBlocked2(related_objects->Filter,
+                        related_objects->Instance,
+                        io_parameter_block->TargetFileObject)
+        ) ||
         (io_parameter_block->MajorFunction == IRP_MJ_CREATE &&
-         isTextBlocked(file_name_info->Name, related_objects)))
+         isTextBlocked(related_objects->Filter,
+                       related_objects->Instance,
+                       file_name_info->Name)))
 #else
     if (isTextBlocked(file_name_info->Name))
 #endif

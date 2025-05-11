@@ -1,7 +1,8 @@
-#include <ntdef.h>
-
 #ifdef USE_FLT_INSTEAD_ZW
-struct FLT_RELATED_OBJECTS;
+// Подгружает ntdef.h
+#include <fltKernel.h>
+#else
+#include <ntdef.h>
 #endif
 
 BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
@@ -16,9 +17,12 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name);
 #ifndef USE_FLT_INSTEAD_ZW
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name);
 #else
-BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
-                      _In_ CONST FLT_RELATED_OBJECTS* related_objects);
-BOOLEAN isTextBlocked2(_In_ CONST FLT_RELATED_OBJECTS* related_objects);
+BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
+                      _In_ PFLT_INSTANCE instance,
+                      _In_ UNICODE_STRING file_name);
+BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
+                       _In_ PFLT_INSTANCE instance,
+                       _In_ PFILE_OBJECT file_object);
 #endif
 
 BOOLEAN checkOsVersion();
