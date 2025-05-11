@@ -803,6 +803,18 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
         return FALSE;
     }
 
+    KdPrint(("File size: %lli/%lli bytes\n", file_standard_info.EndOfFile.QuadPart,
+                                             file_standard_info.AllocationSize.QuadPart));
+
+    if (file_standard_info.EndOfFile.QuadPart == 0)
+    {
+        KdPrint(("Empty file\n"));
+
+        ZwClose(file_handle);
+
+        return FALSE;
+    }
+
     LARGE_INTEGER max_section_size = {
         .QuadPart = MIN(file_standard_info.EndOfFile.QuadPart,
                         fb_config.text_to_block.Length)
@@ -849,10 +861,10 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
     UTF8_STRING utf8_string = {
         .Buffer = (PCHAR)base_address,
         .Length = (USHORT)max_section_size.QuadPart,
-        .MaximumLength = utf8_string.Length
+        .MaximumLength = (USHORT)max_section_size.QuadPart
     };
-    BOOLEAN should_block = FALSE;
     UNICODE_STRING unicode_string;
+    BOOLEAN should_block = FALSE;
     status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
     if (NT_SUCCESS(status))
     {
@@ -862,10 +874,12 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
         RtlFreeUnicodeString(&unicode_string);
     }
+#ifndef NDEBUG
     else
     {
         KdPrint(("Failed to convert string: 0x%08X\n", status));
     }
+#endif
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
     ZwClose(section_handle);
@@ -881,17 +895,16 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     if ((file_name.Buffer == NULL) ||
         (file_name.Length == 0))
         return FALSE;
-
 #ifdef PARANOID_MODE
-    if (not related_objects or
-        not related_objects->Filter or
-        not related_objects->Instance or
-        not related_objects->FileObject)
+    if (not related_objects)
     {
         KdPrint(("WARNING: Null pointer catched!\n"));
         return FALSE;
     }
 #endif
+    if (not related_objects->Filter or
+        not related_objects->Instance)
+        return FALSE;
 
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
@@ -899,56 +912,56 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
                                OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
                                NULL,
                                NULL);
-    /*
+
     HANDLE file_handle;
+    PFILE_OBJECT file_object;
     IO_STATUS_BLOCK io_status_block;
-    NTSTATUS status = FltCreateFile(related_objects->Filter,
-                                    related_objects->Instance,
-                                    &file_handle,
-                                    FILE_GENERIC_READ,
-                                    &object_attributes,
-                                    &io_status_block,
-                                    NULL,
-                                    FILE_ATTRIBUTE_NORMAL,
-                                    FILE_SHARE_READ | FILE_SHARE_DELETE,
-                                    FILE_OPEN,
-                                    FILE_NON_DIRECTORY_FILE,
-                                    NULL,
-                                    0,
-                                    0);
+    NTSTATUS status = FltCreateFileEx(related_objects->Filter,
+                                      related_objects->Instance,
+                                      &file_handle,
+                                      &file_object,
+                                      FILE_GENERIC_READ,
+                                      &object_attributes,
+                                      &io_status_block,
+                                      NULL,
+                                      FILE_ATTRIBUTE_NORMAL,
+                                      FILE_SHARE_READ | FILE_SHARE_DELETE,
+                                      FILE_OPEN,
+                                      FILE_NON_DIRECTORY_FILE,
+                                      NULL,
+                                      0,
+                                      0);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to open file: 0x%08X\n", status));
         return FALSE;
     }
-    */
+
     FILE_STANDARD_INFORMATION file_standard_info;
-    NTSTATUS status = FltQueryInformationFile(related_objects->Instance,
-                                              related_objects->FileObject,
-                                              &file_standard_info,
-                                              sizeof(file_standard_info),
-                                              FileStandardInformation,
-                                              NULL);
+    // WARNING: This routine can only be called on an opened file object!
+    status = FltQueryInformationFile(related_objects->Instance,
+                                     file_object,
+                                     &file_standard_info,
+                                     sizeof(file_standard_info),
+                                     FileStandardInformation,
+                                     NULL);
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to get file info: 0x%08X\n", status));
 
-      //FltClose(file_handle);
+        FltClose(file_handle);
 
         return FALSE;
     }
 
-    PFLT_CONTEXT section_context;
-    status = FltAllocateContext(related_objects->Filter,
-                                FLT_SECTION_CONTEXT,
-                                MAXUSHORT,
-                                NonPagedPool,
-                                &section_context);
-    if (not NT_SUCCESS(status))
-    {
-        KdPrint(("Failed to allocate context\n"));
+    KdPrint(("File size: %lli/%lli bytes\n", file_standard_info.EndOfFile.QuadPart,
+                                             file_standard_info.AllocationSize.QuadPart));
 
-      //FltClose(file_handle);
+    if (file_standard_info.EndOfFile.QuadPart == 0)
+    {
+        KdPrint(("Empty file\n"));
+
+        FltClose(file_handle);
 
         return FALSE;
     }
@@ -957,26 +970,19 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         .QuadPart = MIN(file_standard_info.EndOfFile.QuadPart,
                         fb_config.text_to_block.Length)
     };
-
-    PVOID section_object;
     HANDLE section_handle;
-    status = FltCreateSectionForDataScan(related_objects->Instance,
-                                         related_objects->FileObject,
-                                         section_context,
-                                         SECTION_MAP_READ,
-                                         NULL,
-                                         &max_section_size,
-                                         PAGE_READONLY,
-                                         SEC_COMMIT,
-                                         0,
-                                         &section_handle,
-                                         &section_object,
-                                         NULL);
+    status = ZwCreateSection(&section_handle,
+                             SECTION_MAP_READ,
+                             NULL,
+                             &max_section_size,
+                             PAGE_READONLY,
+                             SEC_COMMIT,
+                             file_handle);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to create section for data scan: 0x%08X\n", status));
+        KdPrint(("Failed to create section: 0x%08X\n", status));
 
-      //FltClose(file_handle);
+        FltClose(file_handle);
 
         return FALSE;
     }
@@ -998,12 +1004,7 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
         KdPrint(("Failed to map view: 0x%08X\n", status));
 
         ZwClose(section_handle);
-        ObDereferenceObject(section_object);
-        
-        FltCloseSectionForDataScan(section_context);
-        FltReleaseContext(section_context);
-
-      //FltClose(file_handle);
+        FltClose(file_handle);
 
         return FALSE;
     }
@@ -1011,9 +1012,118 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
     UTF8_STRING utf8_string = {
         .Buffer = (PCHAR)base_address,
         .Length = (USHORT)max_section_size.QuadPart,
-        .MaximumLength = utf8_string.Length
+        .MaximumLength = (USHORT)max_section_size.QuadPart
     };
+    UNICODE_STRING unicode_string;
     BOOLEAN should_block = FALSE;
+    status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
+    if (NT_SUCCESS(status))
+    {
+        should_block = RtlPrefixUnicodeString(&fb_config.text_to_block,
+                                              &unicode_string,
+                                              TRUE);
+
+        RtlFreeUnicodeString(&unicode_string);
+    }
+#ifndef NDEBUG
+    else
+    {
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
+    }
+#endif
+
+    ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
+    ZwClose(section_handle);
+    FltClose(file_handle);
+
+    return should_block;
+}
+
+_Use_decl_annotations_
+BOOLEAN isTextBlocked2(_In_ PCFLT_RELATED_OBJECTS related_objects)
+{
+#ifdef PARANOID_MODE
+    if (not related_objects)
+    {
+        KdPrint(("WARNING: Null pointer catched!\n"));
+        return FALSE;
+    }
+#endif
+    if (not related_objects->Filter or
+        not related_objects->Instance or
+        not related_objects->FileObject)
+        return FALSE;
+
+    PFLT_CONTEXT section_context;
+    NTSTATUS status = FltAllocateContext(related_objects->Filter,
+                                         FLT_SECTION_CONTEXT,
+                                         MAXUSHORT,
+                                         NonPagedPool,
+                                         &section_context);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to allocate context\n"));
+        return FALSE;
+    }
+
+    LARGE_INTEGER section_size;
+    PVOID section_object;
+    HANDLE section_handle;
+    // WARNING: This routine can only be called on an opened file object!
+    status = FltCreateSectionForDataScan(related_objects->Instance,
+                                         related_objects->FileObject,
+                                         section_context,
+                                         SECTION_MAP_READ | SECTION_QUERY,
+                                         NULL,
+                                         NULL,
+                                         PAGE_READONLY,
+                                         SEC_COMMIT | SEC_FILE,
+                                         0,
+                                         &section_handle,
+                                         &section_object,
+                                         &section_size);
+    if (not NT_SUCCESS(status))
+    {
+#ifndef NDEBUG
+        if (status == STATUS_END_OF_FILE)
+            KdPrint(("Empty file\n"));
+        else
+            KdPrint(("Failed to create section: 0x%08X\n", status));
+#endif
+
+        FltReleaseContext(section_context);
+
+        return FALSE;
+    }
+
+    KdPrint(("Section size: %lli bytes\n", section_size.QuadPart));
+
+    BOOLEAN should_block = FALSE;
+
+    PVOID base_address = NULL;
+    SIZE_T view_size = 0;
+    status = ZwMapViewOfSection(section_handle,
+                                ZwCurrentProcess(),
+                                &base_address,
+                                0,
+                                0,
+                                NULL,
+                                &view_size,
+                                ViewUnmap,
+                                0,
+                                PAGE_READONLY);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to map view: 0x%08X\n", status));
+        goto End;
+    }
+
+    UTF8_STRING utf8_string = {
+        .Buffer = (PCHAR)base_address,
+        .Length = (USHORT)MIN(section_size.QuadPart,
+                              fb_config.text_to_block.Length),
+        .MaximumLength = (USHORT)section_size.QuadPart
+    };
     UNICODE_STRING unicode_string;
     status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
     if (NT_SUCCESS(status))
@@ -1024,28 +1134,22 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
 
         RtlFreeUnicodeString(&unicode_string);
     }
+#ifndef NDEBUG
     else
     {
         KdPrint(("Failed to convert string: 0x%08X\n", status));
     }
+#endif
 
-    status = ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
-    if (not NT_SUCCESS(status))
-        KdPrint(("Failed to unmap view of section: 0x%08X\n", status));
+    ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
 
-    status = ZwClose(section_handle);
-    if (not NT_SUCCESS(status))
-        KdPrint(("Failed to close section handle: 0x%08X\n", status));
-
+End:
+    ZwClose(section_handle);
     ObDereferenceObject(section_object);
 
-    status = FltCloseSectionForDataScan(section_context);
-    if (not NT_SUCCESS(status))
-        KdPrint(("Failed to close section context: 0x%08X\n", status));
+    FltCloseSectionForDataScan(section_context);
 
     FltReleaseContext(section_context);
-    
-  //FltClose(file_handle);
 
     return should_block;
 }

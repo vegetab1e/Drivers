@@ -186,7 +186,7 @@ NTSTATUS driverEntry(_In_ PDRIVER_OBJECT driver_object,
     if (not checkOsVersion())
     {
         KdPrint(("Failed to check OS version\n"));
-        return STATUS_INCOMPATIBLE_DRIVER_BLOCKED;
+        return STATUS_NOT_SUPPORTED;
     }
 
     fb_props.thread = KeGetCurrentThread();
@@ -485,11 +485,12 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
                     return FLT_PREOP_SUCCESS_NO_CALLBACK;
             }
 
-            KdPrint(("This is rename or link operation\n"));
+            KdPrint(("This is rename or move operation\n"));
         }
 
         BOOLEAN is_directory = FALSE;
         NTSTATUS status = STATUS_INVALID_PARAMETER;
+        // WARNING: This routine can only be called on an opened file object!
         if (not (related_objects->FileObject && related_objects->Instance) ||
             not NT_SUCCESS(status = FltIsDirectory(related_objects->FileObject,
                                                    related_objects->Instance,
@@ -514,6 +515,15 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
             not (create_options & FILE_SEQUENTIAL_ONLY))       // не копирование
             return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
+#ifdef NEW_FEATURES_TESTING
+        // гарантирует, что все операции с файлом выполняются последовательно (синхронность)
+        if ((create_options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) or
+            (create_options & FILE_WRITE_THROUGH) or           // про запись
+            (create_options & FILE_DELETE_ON_CLOSE))           // про удаление (не в корзину)
+                                                               // и временные файлы
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
+
         KdPrint(("This is copy operation\n"));
     }
     else
@@ -536,9 +546,8 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
         KdPrint(("[FLT_RELATED_OBJECTS] FileName: %wZ\n",
                  &related_objects->FileObject->FileName));
 
-    if (callback_data->Iopb->TargetFileObject && related_objects->FileObject)
-        FLT_ASSERTMSG("OBJECTS MISMATCH", callback_data->Iopb->TargetFileObject ==
-                                          related_objects->FileObject);
+    FLT_ASSERTMSG("OBJECTS MISMATCH", callback_data->Iopb->TargetFileObject ==
+                                      related_objects->FileObject);
     
     if (callback_data->Iopb->MajorFunction == IRP_MJ_CREATE)
     {
@@ -588,7 +597,11 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
     }
 
 #ifdef USE_FLT_INSTEAD_ZW
-    if (isTextBlocked(file_name_info->Name, related_objects))
+    // Файл должен быть уже открыт
+    if ((io_parameter_block->MajorFunction == IRP_MJ_SET_INFORMATION &&
+         isTextBlocked2(related_objects)) ||
+        (io_parameter_block->MajorFunction == IRP_MJ_CREATE &&
+         isTextBlocked(file_name_info->Name, related_objects)))
 #else
     if (isTextBlocked(file_name_info->Name))
 #endif

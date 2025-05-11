@@ -17,7 +17,8 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name);
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name);
 #else
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name,
-                      _In_ PCFLT_RELATED_OBJECTS related_objects);
+                      _In_ CONST FLT_RELATED_OBJECTS* related_objects);
+BOOLEAN isTextBlocked2(_In_ CONST FLT_RELATED_OBJECTS* related_objects);
 #endif
 
 BOOLEAN checkOsVersion();
