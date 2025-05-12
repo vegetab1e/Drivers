@@ -387,6 +387,9 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to query device name: 0x%08X\n", status));
+
+        ObDereferenceObject(root_directory_object);
+
         return FALSE;
     }
 
@@ -406,6 +409,9 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
     if (not NT_SUCCESS(status))
     {
         KdPrint(("Failed to determine string length: 0x%08X\n", status));
+
+        ObDereferenceObject(root_directory_object);
+
         return FALSE;
     }
 
@@ -419,8 +425,13 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
         not NT_SUCCESS(status = RtlUnicodeStringCat(&object_name_info->Name, config_file_name)))
     {
         KdPrint(("Failed to concatenate strings: 0x%08X\n", status));
+
+        ObDereferenceObject(root_directory_object);
+
         return FALSE;
     }
+
+    ObDereferenceObject(root_directory_object);
 
     KdPrint(("Config file path: \"%wZ\"\n", &object_name_info->Name));
 
