@@ -350,9 +350,7 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
     }
 
     KdPrint(("Filter instance: %p\n", related_objects->Instance));
-    
-    // Может вызываться и вызывается из
-    // разных потоков (картинку выложу)
+
     ExAcquireFastMutex(fb_props.mutex);
 
     FLT_ASSERT(fb_props.num_flt_instances < MAX_FLT_INSTANCES);
