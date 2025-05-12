@@ -368,7 +368,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
         return;
 
     BOOLEAN is_name = TRUE;
-    PUNICODE_STRING pointer = NULL;
+    PUNICODE_STRING value_pointer = NULL;
     for (ULONG i = 0, j = 0; i < size; ++i)
     {
         if (is_name && data[i] == '=')
@@ -386,7 +386,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
                 {
                     if (RtlEqualString(&fb_config_params[index].name, &name, TRUE))
                     {
-                        pointer = fb_config_params[index].value;
+                        value_pointer = fb_config_params[index].value;
 
                         KdPrint(("Parameter name: \"%Z\"\n", &name));
                         break;
@@ -394,7 +394,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
                 }
             }
             
-            if (not pointer)
+            if (not value_pointer)
             {
                 // до конца текущей строки
                 do {
@@ -433,7 +433,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
                         .MaximumLength = (USHORT)length
                     };
 
-                    status = RtlUnicodeStringCopy(pointer, &value);
+                    status = RtlUnicodeStringCopy(value_pointer, &value);
                     if (NT_SUCCESS(status))
                         KdPrint(("Parameter value: \"%wZ\"\n", &value));
                     else
@@ -453,7 +453,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
 
             j = i + 1;
             is_name = TRUE;
-            pointer = NULL;
+            value_pointer = NULL;
         }
     }
 }
