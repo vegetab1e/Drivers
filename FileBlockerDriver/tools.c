@@ -431,6 +431,26 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 #endif // USE_FULL_CONFIG_PATH
 #endif // !USE_DEFAULT_CONFIG_PATH
 
+static VOID prepareConfigData(_Inout_updates_bytes_to_(_Old_(*size), *size) PCH data,
+                              _Inout_ PULONG size)
+{
+    if (data == NULL ||
+        size == NULL ||
+        *size == 0)
+        return;
+
+    ULONG j = 0;
+    for (ULONG i = 0; i < *size; ++i)
+    {
+        if (data[i] == '\r')
+            continue;
+
+        data[j++] = data[i];
+    }
+
+    *size = j;
+}
+
 static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
                             _In_ ULONG size)
 {
@@ -453,7 +473,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
                 while (i < size && data[i] != '\n');
 
                 // до начала следующей непустой строки
-                while ((i + 1) < size && (data[i + 1] == '\r' || data[i + 1] == '\n'))
+                while ((i + 1) < size && data[i + 1] == '\n')
                 {
                     ++i;
                 }
@@ -465,12 +485,12 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
             j = i + 1;
             is_name = FALSE;
         }
-        else if (!is_name && (data[i] == '\r' || data[i] == '\n'))
+        else if (!is_name && data[i] == '\n')
         {
             setValueByReference(value_reference, data + j, i - j);
 
             // до начала следующей непустой строки
-            while ((i + 1) < size && (data[i + 1] == '\r' || data[i + 1] == '\n'))
+            while ((i + 1) < size && data[i + 1] == '\n')
             {
                 ++i;
             }
@@ -696,6 +716,7 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Number of bytes read: %lu\n", length));
 
         buffer[length++] = '\n';
+        prepareConfigData(buffer, &length);
         parseConfigData(buffer, length);
 
         MmFreeNonCachedMemory(buffer, MAX_FILE_LEN);
