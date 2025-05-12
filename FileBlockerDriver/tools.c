@@ -60,6 +60,78 @@ static CONFIGURATION_PARAMETER fb_config_params[] = {
 
 static CONST USHORT num_fb_config_params = sizeof(fb_config_params) / sizeof(fb_config_params[0]);
 
+static PUNICODE_STRING getValueReferenceByName(_In_reads_bytes_(length) PCCH string,
+                                               _In_ ULONG length)
+{
+    if (length == 0 || length > MAX_STRING_LEN)
+    {
+        KdPrint(("Invalid parameter name\n"));
+        return NULL;
+    }
+
+    CONST ANSI_STRING name = {
+        .Buffer = (PCHAR)string,
+        .Length = (USHORT)length,
+        .MaximumLength = (USHORT)length
+    };
+
+    for (USHORT index = 0; index < num_fb_config_params; ++index)
+    {
+        if (RtlEqualString(&fb_config_params[index].name, &name, TRUE))
+        {
+            KdPrint(("Parameter name: \"%Z\"\n", &name));
+            return fb_config_params[index].value;
+        }
+    }
+
+    KdPrint(("Parameter not found\n"));
+    return NULL;
+}
+
+static BOOLEAN setValueByReference(_In_ PUNICODE_STRING value_reference,
+                                   _In_reads_bytes_(length) PCCH string,
+                                   _In_ ULONG length)
+{
+    static CHAR buffer[MAX_STRING_LEN * sizeof(WCHAR)];
+#ifdef PARANOID_MODE
+    if (not value_reference or
+        not string)
+        return FALSE;
+#endif
+    if (length == 0 || length > sizeof(buffer))
+    {
+        KdPrint(("Invalid parameter value\n"));
+        return FALSE;
+    }
+
+    NTSTATUS status = RtlUTF8ToUnicodeN((PWCHAR)buffer,
+                                        sizeof(buffer),
+                                        &length,
+                                        string,
+                                        length);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to convert string: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    CONST UNICODE_STRING value = {
+        .Buffer = (PWCHAR)buffer,
+        .Length = (USHORT)length,
+        .MaximumLength = (USHORT)length
+    };
+
+    status = RtlUnicodeStringCopy(value_reference, &value);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to copy string: 0x%08X\n", status));
+        return FALSE;
+    }
+        
+    KdPrint(("Parameter value: \"%wZ\"\n", &value));
+    return TRUE;
+}
+
 static NTSTATUS allocUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
 {
     if (not unicode_string)
@@ -359,42 +431,20 @@ static BOOLEAN getConfigFilePath(_In_ HANDLE root_directory_handle,
 #endif // USE_FULL_CONFIG_PATH
 #endif // !USE_DEFAULT_CONFIG_PATH
 
-static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
+static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
                             _In_ ULONG size)
 {
-    static CHAR buffer[MAX_STRING_LEN * sizeof(WCHAR)];
-
     if (not data or not size)
         return;
 
     BOOLEAN is_name = TRUE;
-    PUNICODE_STRING value_pointer = NULL;
+    PUNICODE_STRING value_reference = NULL;
     for (ULONG i = 0, j = 0; i < size; ++i)
     {
         if (is_name && data[i] == '=')
         {
-            CONST ULONG length = i - j;
-            if (length != 0 && length <= MAX_STRING_LEN)
-            {
-                CONST ANSI_STRING name = {
-                    .Buffer = data + j,
-                    .Length = (USHORT)length,
-                    .MaximumLength = (USHORT)length
-                };
-
-                for (USHORT index = 0; index < num_fb_config_params; ++index)
-                {
-                    if (RtlEqualString(&fb_config_params[index].name, &name, TRUE))
-                    {
-                        value_pointer = fb_config_params[index].value;
-
-                        KdPrint(("Parameter name: \"%Z\"\n", &name));
-                        break;
-                    }
-                }
-            }
-            
-            if (not value_pointer)
+            value_reference = getValueReferenceByName(data + j, i - j);
+            if (not value_reference)
             {
                 // до конца текущей строки
                 do {
@@ -417,33 +467,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
         }
         else if (!is_name && (data[i] == '\r' || data[i] == '\n'))
         {
-            ULONG length = i - j;
-            if (length != 0 && length <= sizeof(buffer))
-            {
-                NTSTATUS status = RtlUTF8ToUnicodeN((PWCHAR)buffer,
-                                                    sizeof(buffer),
-                                                    &length,
-                                                    data + j,
-                                                    length);
-                if (NT_SUCCESS(status))
-                {
-                    CONST UNICODE_STRING value = {
-                        .Buffer = (PWCHAR)buffer,
-                        .Length = (USHORT)length,
-                        .MaximumLength = (USHORT)length
-                    };
-
-                    status = RtlUnicodeStringCopy(value_pointer, &value);
-                    if (NT_SUCCESS(status))
-                        KdPrint(("Parameter value: \"%wZ\"\n", &value));
-                    else
-                        KdPrint(("Failed to copy string: 0x%08X\n", status));
-                }
-                else
-                {
-                    KdPrint(("Failed to convert string: 0x%08X\n", status));
-                }
-            }
+            setValueByReference(value_reference, data + j, i - j);
 
             // до начала следующей непустой строки
             while ((i + 1) < size && (data[i + 1] == '\r' || data[i + 1] == '\n'))
@@ -453,7 +477,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCHAR data,
 
             j = i + 1;
             is_name = TRUE;
-            value_pointer = NULL;
+            value_reference = NULL;
         }
     }
 }
