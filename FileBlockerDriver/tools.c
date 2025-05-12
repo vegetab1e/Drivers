@@ -1064,15 +1064,34 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
     KdPrint(("[FILE_OBJECT] Flags: 0x%032X\n", file_object->Flags));
 #endif
 
-    PFLT_CONTEXT section_context;
-    NTSTATUS status = FltAllocateContext(filter,
-                                         FLT_SECTION_CONTEXT,
-                                         MAXUCHAR,
-                                         NonPagedPool,
-                                         &section_context);
+    PFLT_CONTEXT section_context = NULL;
+    NTSTATUS status = FltGetSectionContext(instance,
+                                           file_object,
+                                           &section_context);
+    if (not NT_SUCCESS(status) &&
+        status != STATUS_NOT_FOUND)
+    {
+        KdPrint(("Failed to get context: 0x%08X\n", status));
+        return FALSE;
+    }
+
+    if (section_context != NULL)
+    {
+        KdPrint(("WARNING: The context already exist!\n"));
+        // A section context, FLT_SECTION_CONTEXT type,
+        // must not be deleted using FltDeleteContext.
+        FltReleaseContext(section_context);
+        section_context = NULL;
+    }
+
+    status = FltAllocateContext(filter,
+                                FLT_SECTION_CONTEXT,
+                                MAXUCHAR,
+                                NonPagedPool,
+                                &section_context);
     if (not NT_SUCCESS(status))
     {
-        KdPrint(("Failed to allocate context\n"));
+        KdPrint(("Failed to allocate context: 0x%08X\n", status));
         return FALSE;
     }
 
