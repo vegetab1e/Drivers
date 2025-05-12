@@ -936,7 +936,11 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 _Use_decl_annotations_
 BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
                       _In_ PFLT_INSTANCE instance,
-                      _In_ UNICODE_STRING file_name)
+                      _In_ UNICODE_STRING file_name
+#ifndef NDEBUG
+                      , _In_opt_ PFILE_OBJECT in_file_object
+#endif
+                     )
 {
 #ifdef PARANOID_MODE
     if (not filter or
@@ -946,6 +950,14 @@ BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
     if (file_name.Buffer == NULL ||
         file_name.Length == 0)
         return FALSE;
+
+#ifndef NDEBUG
+    if (in_file_object &&
+        (in_file_object->ReadAccess ||
+         in_file_object->WriteAccess ||
+         in_file_object->DeleteAccess))
+        KdPrint(("WARNING: The file is already open!\n"));
+#endif
 
     OBJECT_ATTRIBUTES object_attributes;
     InitializeObjectAttributes(&object_attributes,
@@ -1028,10 +1040,17 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
         return FALSE;
 #endif
 
+#ifndef NDEBUG
+    if (not file_object->ReadAccess &&
+        not file_object->WriteAccess &&
+        not file_object->DeleteAccess)
+        KdPrint(("WARNING: The file is not open!\n"));
+#endif
+
     PFLT_CONTEXT section_context;
     NTSTATUS status = FltAllocateContext(filter,
                                          FLT_SECTION_CONTEXT,
-                                         MAXUSHORT,
+                                         MAXUCHAR,
                                          NonPagedPool,
                                          &section_context);
     if (not NT_SUCCESS(status))

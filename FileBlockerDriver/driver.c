@@ -28,6 +28,9 @@ DRIVER_UNLOAD  driverUnload;
 static NTSTATUS
 FLTAPI filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags);
 
+static VOID
+printVolumeName(_In_ PFLT_VOLUME volume);
+
 static NTSTATUS
 FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                              _In_ FLT_INSTANCE_SETUP_FLAGS setup_flags,
@@ -329,6 +332,9 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
 {
     PAGED_CODE();
 
+    if (not related_objects)
+        return STATUS_FLT_DO_NOT_ATTACH;
+
     FLT_ASSERT(fb_props.filter == related_objects->Filter);
 
     if ((ULONG_PTR)fb_props.thread != ExGetCurrentResourceThread())
@@ -339,6 +345,8 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                  ExGetCurrentResourceThread()));
 
     KdPrint(("Setup flags: 0x%08X\n", setup_flags));
+
+    printVolumeName(related_objects->Volume);
 
     if (device_type not_eq FILE_DEVICE_DISK_FILE_SYSTEM or
         (filesystem_type not_eq FLT_FSTYPE_NTFS and
@@ -390,6 +398,9 @@ FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                                      _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS teardown_flags)
 {
     PAGED_CODE();
+
+    if (not related_objects)
+        return STATUS_SUCCESS;
 
     FLT_ASSERT(fb_props.filter == related_objects->Filter);
 
@@ -637,7 +648,11 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
         (io_parameter_block->MajorFunction == IRP_MJ_CREATE &&
          isTextBlocked(related_objects->Filter,
                        related_objects->Instance,
-                       file_name_info->Name)))
+                       file_name_info->Name
+#ifndef NDEBUG
+                       , io_parameter_block->TargetFileObject
+#endif
+                      )))
 #else
     if (isTextBlocked(file_name_info->Name))
 #endif
@@ -657,4 +672,55 @@ FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA callback_data,
     FltReleaseFileNameInformation(file_name_info);
 
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
+
+_Use_decl_annotations_
+static VOID printVolumeName(_In_ PFLT_VOLUME volume)
+{
+    if (not volume)
+    {
+        KdPrint(("Invalid parameter\n"));
+        return;
+    }
+
+    ULONG volume_name_size = 0;
+    NTSTATUS status = FltGetVolumeName(volume,
+                                       NULL,
+                                       &volume_name_size);
+    if (not NT_SUCCESS(status) &&
+        status != STATUS_BUFFER_TOO_SMALL)
+    {
+        KdPrint(("Failed to get volume name: 0x%08X\n", status));
+        return;
+    }
+
+    UNICODE_STRING volume_name = {
+        .Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                  volume_name_size,
+                                  '1gaT'),
+        .Length = 0,
+        .MaximumLength = (USHORT)volume_name_size
+    };
+
+    if (not volume_name.Buffer)
+    {
+        KdPrint(("Failed to allocate memory\n"));
+        return;
+    }
+
+    status = FltGetVolumeName(volume,
+                              &volume_name,
+                              NULL);
+    if (not NT_SUCCESS(status))
+    {
+        KdPrint(("Failed to get volume name: 0x%08X\n", status));
+    
+        ExFreePool(volume_name.Buffer);
+        
+        return;
+    }
+
+    KdPrint(("Volume name: %wZ\n", &volume_name));
+
+    ExFreePool(volume_name.Buffer);
 }
