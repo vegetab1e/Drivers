@@ -476,7 +476,11 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
         if (is_name && data[i] == '=')
         {
             value_reference = getValueReferenceByName(data + j, i - j);
-            if (not value_reference)
+            if (value_reference != NULL)
+            {
+                is_name = FALSE;
+            }
+            else
             {
                 // до конца текущей строки
                 do {
@@ -489,18 +493,15 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
                 {
                     ++i;
                 }
-
-                j = i + 1;
-                continue;
             }
 
             j = i + 1;
-            is_name = FALSE;
         }
         else if (!is_name && data[i] == '\n')
         {
             setValueByReference(value_reference, data + j, i - j);
             value_reference = NULL;
+            is_name = TRUE;
 
             // до начала следующей непустой строки
             while ((i + 1) < size && data[i + 1] == '\n')
@@ -509,7 +510,6 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
             }
 
             j = i + 1;
-            is_name = TRUE;
         }
     }
 }
