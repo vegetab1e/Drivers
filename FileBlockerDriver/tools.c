@@ -952,11 +952,15 @@ BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
         return FALSE;
 
 #ifndef NDEBUG
-    if (in_file_object &&
-        (in_file_object->ReadAccess ||
-         in_file_object->WriteAccess ||
-         in_file_object->DeleteAccess))
-        KdPrint(("WARNING: The file is already open!\n"));
+    if (in_file_object)
+    {
+        if (in_file_object->ReadAccess ||
+            in_file_object->WriteAccess ||
+            in_file_object->DeleteAccess)
+            KdPrint(("WARNING: The file is already open!\n"));
+
+        KdPrint(("[FILE_OBJECT] Flags: 0x%032X\n", in_file_object->Flags));
+    }
 #endif
 
     OBJECT_ATTRIBUTES object_attributes;
@@ -1045,6 +1049,8 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
         not file_object->WriteAccess &&
         not file_object->DeleteAccess)
         KdPrint(("WARNING: The file is not open!\n"));
+
+    KdPrint(("[FILE_OBJECT] Flags: 0x%032X\n", file_object->Flags));
 #endif
 
     PFLT_CONTEXT section_context;
