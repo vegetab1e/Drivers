@@ -488,6 +488,7 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
         else if (!is_name && data[i] == '\n')
         {
             setValueByReference(value_reference, data + j, i - j);
+            value_reference = NULL;
 
             // до начала следующей непустой строки
             while ((i + 1) < size && data[i + 1] == '\n')
@@ -497,7 +498,6 @@ static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
 
             j = i + 1;
             is_name = TRUE;
-            value_reference = NULL;
         }
     }
 }
