@@ -454,7 +454,8 @@ static VOID prepareConfigData(_Inout_updates_bytes_to_(_Old_(*size), *size) PCH 
 static VOID parseConfigData(_In_reads_bytes_(size) PCCH data,
                             _In_ ULONG size)
 {
-    if (not data or not size)
+    if (data == NULL ||
+        size == 0)
         return;
 
     BOOLEAN is_name = TRUE;

@@ -363,7 +363,7 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
     if (index == fb_props.num_flt_instances)
         fb_props.flt_instances[fb_props.num_flt_instances++] = related_objects->Instance;
     else
-        KdPrint(("WARNING: Instance already exists!\n"));
+        KdPrint(("WARNING: The instance already exist!\n"));
     
     ExReleaseFastMutex(fb_props.mutex);
 
@@ -413,7 +413,7 @@ FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
             break;
 
     if (index == fb_props.num_flt_instances)
-        KdPrint(("WARNING: Instance do not exists!\n"));
+        KdPrint(("WARNING: The instance does not exist!\n"));
     else
         fb_props.flt_instances[index] = NULL;
     
