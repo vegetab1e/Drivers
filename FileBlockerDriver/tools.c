@@ -874,12 +874,10 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
         RtlFreeUnicodeString(&unicode_string);
     }
-#ifndef NDEBUG
     else
     {
         KdPrint(("Failed to convert string: 0x%08X\n", status));
     }
-#endif
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
     ZwClose(section_handle);
@@ -1063,12 +1061,10 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
 
         RtlFreeUnicodeString(&unicode_string);
     }
-#ifndef NDEBUG
     else
     {
         KdPrint(("Failed to convert string: 0x%08X\n", status));
     }
-#endif
 
     ZwUnmapViewOfSection(ZwCurrentProcess(), base_address);
 

@@ -372,11 +372,13 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
 #ifdef USE_FLT_INSTEAD_ZW
     NTSTATUS status = FltRegisterForDataScan(related_objects->Instance);
     if (not NT_SUCCESS(status))
+    {
         KdPrint(("Failed to register for data scan: 0x%08X\n", status));
-    else
-        /* If FltRegisterForDataScan returns STATUS_NOT_SUPPORTED, a
-           minifilter can still create sections for data scanning by
-           calling FsRtlCreateSectionForDataScan. */;
+     /* If FltRegisterForDataScan returns STATUS_NOT_SUPPORTED, a
+        minifilter can still create sections for data scanning by
+        calling FsRtlCreateSectionForDataScan. */
+        return STATUS_FLT_DO_NOT_ATTACH;
+    }
 #endif
 
     KdPrint(("Filter loaded (device/filesystem types): %lu/%i\n",
@@ -389,8 +391,35 @@ static NTSTATUS
 FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                                      _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS teardown_flags)
 {
-    UNREFERENCED_PARAMETER(related_objects);
-    UNREFERENCED_PARAMETER(teardown_flags);
+    PAGED_CODE();
+
+    FLT_ASSERT(fb_props.filter == related_objects->Filter);
+
+    if ((ULONG_PTR)fb_props.thread != ExGetCurrentResourceThread())
+        KdPrint(("WARNING: Multithreading detected!\n" \
+                 "Main thread ID: %llu\n" \
+                 "This thread ID: %llu\n",
+                 (ULONG_PTR)fb_props.thread,
+                 ExGetCurrentResourceThread()));
+
+    KdPrint(("Teardown flags: 0x%08X\n" \
+             "Filter instance: %p\n",
+             teardown_flags,
+             related_objects->Instance));
+    
+    ExAcquireFastMutex(fb_props.mutex);
+
+    USHORT index = 0;
+    for (; index < fb_props.num_flt_instances; ++index)
+        if (fb_props.flt_instances[index] == related_objects->Instance)
+            break;
+
+    if (index == fb_props.num_flt_instances)
+        KdPrint(("WARNING: Instance do not exists!\n"));
+    else
+        fb_props.flt_instances[index] = NULL;
+    
+    ExReleaseFastMutex(fb_props.mutex);
 
     return STATUS_SUCCESS;
 }
