@@ -721,8 +721,8 @@ _Use_decl_annotations_
 BOOLEAN isRecycleBinPath(_In_reads_bytes_(file_name_len) PWCH file_name,
                          _In_ ULONG file_name_len)
 {
-    if ((file_name == NULL) ||
-        (file_name_len < RECYCLE_BIN_NAME.Length))
+    if (file_name == NULL ||
+        file_name_len < RECYCLE_BIN_NAME.Length)
         return FALSE;
 
     PWCH dollar_sign_pos = NULL;
@@ -751,8 +751,9 @@ BOOLEAN isRecycleBinPath(_In_reads_bytes_(file_name_len) PWCH file_name,
 _Use_decl_annotations_
 BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
 {
-    if ((file_name == NULL) || (file_name->Buffer == NULL) ||
-        (file_name->Length < fb_config.ext_to_block.Length))
+    if (file_name == NULL ||
+        file_name->Buffer == NULL ||
+        file_name->Length < fb_config.ext_to_block.Length)
         return FALSE;
 
     PWCH dot_pos = NULL;
@@ -782,8 +783,8 @@ BOOLEAN isExtensionBlocked(_In_ PCUNICODE_STRING file_name)
 _Use_decl_annotations_
 BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 {
-    if ((file_name.Buffer == NULL) ||
-        (file_name.Length == 0))
+    if (file_name.Buffer == NULL ||
+        file_name.Length == 0)
         return FALSE;
 
     OBJECT_ATTRIBUTES object_attributes;
@@ -920,8 +921,8 @@ BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
         not instance)
         return FALSE;
 #endif
-    if ((file_name.Buffer == NULL) ||
-        (file_name.Length == 0))
+    if (file_name.Buffer == NULL ||
+        file_name.Length == 0)
         return FALSE;
 
     OBJECT_ATTRIBUTES object_attributes;
