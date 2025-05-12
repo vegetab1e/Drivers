@@ -23,13 +23,12 @@ typedef struct _FILE_BLOCKER_PROPERTIES
 static FILE_BLOCKER_PROPERTIES fb_props;
 
 DRIVER_INITIALIZE driverEntry;
-DRIVER_UNLOAD  driverUnload;
+DRIVER_UNLOAD driverUnload;
 
 static NTSTATUS
 FLTAPI filterUnloadCallback(_In_ FLT_FILTER_UNLOAD_FLAGS flags);
 
-static VOID
-printVolumeName(_In_ PFLT_VOLUME volume);
+static VOID printVolumeName(_In_ PFLT_VOLUME volume);
 
 static NTSTATUS
 FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
@@ -37,9 +36,11 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                              _In_ DEVICE_TYPE  device_yype,
                              _In_ FLT_FILESYSTEM_TYPE  filesystem_type);
 
+#ifndef DISABLE_MANUAL_DETACH
 static NTSTATUS
 FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                                      _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS teardown_flags);
+#endif
 
 static FLT_PREOP_CALLBACK_STATUS
 FLTAPI preOperationCallback(_Inout_ PFLT_CALLBACK_DATA data,
@@ -169,7 +170,11 @@ static CONST FLT_REGISTRATION filter_registration = {
     callbacks,
     filterUnloadCallback,
     instanceSetupCallback,
+#ifndef DISABLE_MANUAL_DETACH
     instanceQueryTeardownCallback,
+#else
+    NULL,
+#endif
     NULL,
     NULL,
     NULL,
@@ -392,15 +397,20 @@ FLTAPI instanceSetupCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
     return STATUS_SUCCESS;
 }
 
+#ifndef DISABLE_MANUAL_DETACH
 _Use_decl_annotations_
 static NTSTATUS
 FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                                      _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS teardown_flags)
 {
+    // No flags are currently defined.
+    // 02/22/2024, learn.microsoft.com
+    UNREFERENCED_PARAMETER(teardown_flags);
+
     PAGED_CODE();
 
     if (not related_objects)
-        return STATUS_SUCCESS;
+        return STATUS_FLT_DO_NOT_DETACH;
 
     FLT_ASSERT(fb_props.filter == related_objects->Filter);
 
@@ -411,12 +421,11 @@ FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
                  (ULONG_PTR)fb_props.thread,
                  ExGetCurrentResourceThread()));
 
-    KdPrint(("Teardown flags: 0x%08X\n" \
-             "Filter instance: %p\n",
-             teardown_flags,
-             related_objects->Instance));
+    KdPrint(("Filter instance: %p\n", related_objects->Instance));
     
     ExAcquireFastMutex(fb_props.mutex);
+
+    FLT_ASSERT(fb_props.num_flt_instances > 0);
 
     USHORT index = 0;
     for (; index < fb_props.num_flt_instances; ++index)
@@ -426,12 +435,18 @@ FLTAPI instanceQueryTeardownCallback(_In_ PCFLT_RELATED_OBJECTS related_objects,
     if (index == fb_props.num_flt_instances)
         KdPrint(("WARNING: The instance does not exist!\n"));
     else
-        fb_props.flt_instances[index] = NULL;
+    {
+        for (; index < fb_props.num_flt_instances - 1; ++index)
+            fb_props.flt_instances[index] = fb_props.flt_instances[index + 1];
+
+        fb_props.flt_instances[--fb_props.num_flt_instances] = NULL;
+    }
     
     ExReleaseFastMutex(fb_props.mutex);
 
     return STATUS_SUCCESS;
 }
+#endif
 
 _Use_decl_annotations_
 static FLT_PREOP_CALLBACK_STATUS
