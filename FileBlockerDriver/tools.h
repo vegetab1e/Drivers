@@ -1,3 +1,5 @@
+#pragma once
+
 #ifdef USE_FLT_INSTEAD_ZW
 // Подгружает ntdef.h
 #include <fltKernel.h>
@@ -20,14 +22,11 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name);
 #else
 BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
                       _In_ PFLT_INSTANCE instance,
-                      _In_ UNICODE_STRING file_name
 #ifndef NDEBUG
-                      , _In_opt_ PFILE_OBJECT in_file_object
+                      _In_opt_ PFILE_OBJECT in_file_object,
 #endif
-                     );
+                      _In_ UNICODE_STRING file_name);
 BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
                        _In_ PFLT_INSTANCE instance,
                        _In_ PFILE_OBJECT file_object);
 #endif
-
-BOOLEAN checkOsVersion();

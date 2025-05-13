@@ -7,8 +7,8 @@
 #include <ntifs.h>
 #endif // !USE_DEFAULT_CONFIG_PATH && USE_FULL_CONFIG_PATH
 #endif // USE_FLT_INSTEAD_ZW
-#include <ntstrsafe.h>
 #include <ntddk.h>
+#include <ntstrsafe.h>
 
 #include <iso646.h>
 
@@ -16,9 +16,7 @@
 
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
-#define OS_MAJOR_VERSION    10UL
-#define OS_MINOR_VERSION     0UL
-#define OS_BUILD_NUMBER  19041UL
+#define POOL_TAG '1gaT'
 
 #define MAX_PATH_LEN    256U
 // Один байт зарезервирован!
@@ -148,7 +146,7 @@ static NTSTATUS allocUnicodeString(_Inout_ PUNICODE_STRING unicode_string)
     unicode_string->MaximumLength = MAX_STRING_LEN * sizeof(WCHAR);
     unicode_string->Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED,
                                              unicode_string->MaximumLength,
-                                             '1gaT');
+                                             POOL_TAG);
     if (not unicode_string->Buffer)
     {
         KdPrint(("Failed to allocate memory\n"));
@@ -577,15 +575,15 @@ static BOOLEAN checkConfigFile(_In_ HANDLE config_file_handle)
     return TRUE;
 }
 
+_Success_(return != FALSE)
 static BOOLEAN readConfigFile(_In_ HANDLE config_file_handle,
                               _Out_writes_bytes_(*length) PCHAR buffer,
                               _Inout_ PULONG length)
 {
+    IO_STATUS_BLOCK io_status_block;
     LARGE_INTEGER offset = {
         .QuadPart = 0
     };
-
-    IO_STATUS_BLOCK io_status_block;
     NTSTATUS status = ZwReadFile(config_file_handle,
                                  NULL,
                                  NULL,
@@ -619,7 +617,8 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         return FALSE;
 #endif
 
-    if (not initDefaultConfig())
+    BOOLEAN result = initDefaultConfig();
+    if (not result)
         return FALSE;
 
 #ifdef UNDER_CONSTRUCTION
@@ -653,9 +652,9 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 
 #ifdef USE_FULL_CONFIG_PATH
     UNICODE_STRING config_file_path;
-    BOOLEAN result = getConfigFilePath(root_directory_handle,
-                                       &config_file_name,
-                                       &config_file_path);
+    result = getConfigFilePath(root_directory_handle,
+                               &config_file_name,
+                               &config_file_path);
 
     ZwClose(root_directory_handle);
 
@@ -668,34 +667,31 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
 #endif // !USE_DEFAULT_CONFIG_PATH
 
     HANDLE config_file_handle;
-    if (not openConfigFile(
+    result = openConfigFile(
 #if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
-                           root_directory_handle,
+                            root_directory_handle,
 #else
-                           NULL,
+                            NULL,
 #endif
 #if defined(USE_DEFAULT_CONFIG_PATH)
-                           &CONFIG_FILE_PATH,
+                            &CONFIG_FILE_PATH,
 #elif defined(USE_FULL_CONFIG_PATH)
-                           &config_file_path,
+                            &config_file_path,
 #else
-                           &config_file_name,
+                            &config_file_name,
 #endif
-                           &config_file_handle))
-    {
+                            &config_file_handle);
+
 #if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
-        ZwClose(root_directory_handle);
+    ZwClose(root_directory_handle);
 #endif
 
+    if (not result)
         goto End;
-    }
 
     if (not checkConfigFile(config_file_handle))
     {
         ZwClose(config_file_handle);
-#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
-        ZwClose(root_directory_handle);
-#endif
 
         goto End;
     }
@@ -706,9 +702,6 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
         KdPrint(("Failed to allocate memory\n"));
 
         ZwClose(config_file_handle);
-#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
-        ZwClose(root_directory_handle);
-#endif
 
         goto End;
     }
@@ -719,9 +712,6 @@ BOOLEAN initializeFileBlocker(_In_ PDRIVER_OBJECT driver_object,
                             &length);
 
     ZwClose(config_file_handle);
-#if !defined(USE_DEFAULT_CONFIG_PATH) && !defined(USE_FULL_CONFIG_PATH)
-    ZwClose(root_directory_handle);
-#endif
 
     if (result)
     {
@@ -873,11 +863,13 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
         return FALSE;
     }
 
+    HANDLE section_handle;
+    // ZwCreateSection rounds this value up
+    // to the nearest multiple of PAGE_SIZE.
     LARGE_INTEGER max_section_size = {
         .QuadPart = MIN(file_standard_info.EndOfFile.QuadPart,
                         fb_config.text_to_block.Length)
     };
-    HANDLE section_handle;
     status = ZwCreateSection(&section_handle,
                              SECTION_MAP_READ,
                              NULL,
@@ -919,8 +911,15 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
     UTF8_STRING utf8_string = {
         .Buffer = (PCHAR)base_address,
         .Length = (USHORT)max_section_size.QuadPart,
-        .MaximumLength = (USHORT)max_section_size.QuadPart
+        .MaximumLength = (USHORT)MIN(file_standard_info.EndOfFile.QuadPart,
+                                     (LONGLONG)view_size)
     };
+
+    NT_VERIFY(utf8_string.Length <= utf8_string.MaximumLength);
+
+    KdPrint(("String size: %hu/%hu bytes\n", utf8_string.Length,
+                                             utf8_string.MaximumLength));
+
     UNICODE_STRING unicode_string;
     BOOLEAN should_block = FALSE;
     status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
@@ -947,11 +946,10 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 _Use_decl_annotations_
 BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
                       _In_ PFLT_INSTANCE instance,
-                      _In_ UNICODE_STRING file_name
 #ifndef NDEBUG
-                      , _In_opt_ PFILE_OBJECT in_file_object
+                      _In_opt_ PFILE_OBJECT in_file_object,
 #endif
-                     )
+                      _In_ UNICODE_STRING file_name)
 {
 #ifdef PARANOID_MODE
     if (not filter or
@@ -1018,6 +1016,7 @@ BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
         KdPrint(("Failed to get file info: 0x%08X\n", status));
 
         FltClose(file_handle);
+        ObDereferenceObject(file_object);
 
         return FALSE;
     }
@@ -1030,6 +1029,7 @@ BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
         KdPrint(("Empty file\n"));
 
         FltClose(file_handle);
+        ObDereferenceObject(file_object);
 
         return FALSE;
     }
@@ -1039,6 +1039,7 @@ BOOLEAN isTextBlocked(_In_ PFLT_FILTER filter,
                                                 file_object);
     
     FltClose(file_handle);
+    ObDereferenceObject(file_object);
 
     return should_block;
 }
@@ -1078,10 +1079,12 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
     if (section_context != NULL)
     {
         KdPrint(("WARNING: The context already exist!\n"));
+
         // A section context, FLT_SECTION_CONTEXT type,
         // must not be deleted using FltDeleteContext.
+        FltCloseSectionForDataScan(section_context);
+        
         FltReleaseContext(section_context);
-        section_context = NULL;
     }
 
     status = FltAllocateContext(filter,
@@ -1095,9 +1098,9 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
         return FALSE;
     }
 
-    LARGE_INTEGER section_size;
-    PVOID section_object;
     HANDLE section_handle;
+    PVOID section_object;
+    LARGE_INTEGER section_size;
     // WARNING: This routine can only be called on an opened file object!
     status = FltCreateSectionForDataScan(instance,
                                          file_object,
@@ -1125,8 +1128,6 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
         return FALSE;
     }
 
-    KdPrint(("Section size: %lli bytes\n", section_size.QuadPart));
-
     BOOLEAN should_block = FALSE;
 
     PVOID base_address = NULL;
@@ -1151,8 +1152,15 @@ BOOLEAN isTextBlocked2(_In_ PFLT_FILTER filter,
         .Buffer = (PCHAR)base_address,
         .Length = (USHORT)MIN(section_size.QuadPart,
                               fb_config.text_to_block.Length),
-        .MaximumLength = (USHORT)section_size.QuadPart
+        .MaximumLength = (USHORT)MIN(section_size.QuadPart,
+                                     (LONGLONG)view_size)
     };
+
+    NT_VERIFY(utf8_string.Length <= utf8_string.MaximumLength);
+
+    KdPrint(("String size: %hu/%hu bytes\n", utf8_string.Length,          // нужно прочитать
+                                             utf8_string.MaximumLength)); // можно прочитать
+
     UNICODE_STRING unicode_string;
     status = RtlUTF8StringToUnicodeString(&unicode_string, &utf8_string, TRUE);
     if (NT_SUCCESS(status))
@@ -1181,44 +1189,3 @@ End:
     return should_block;
 }
 #endif
-
-BOOLEAN checkOsVersion()
-{
-    RTL_OSVERSIONINFOW os_version_info = {
-        .dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOW)
-    };
-
-    NTSTATUS status = RtlGetVersion(&os_version_info);
-    if (not NT_SUCCESS(status))
-    {
-        KdPrint(("Failed to get OS version: 0x%08X\n", status));
-        return FALSE;
-    }
-
-    CHAR buffer[MAX_STRING_LEN * sizeof(WCHAR)];
-    UNICODE_STRING os_version = {
-        .Buffer = (PWCHAR)buffer,
-        .Length = 0,
-        .MaximumLength = sizeof(buffer)
-    };
-
-    status = RtlUnicodeStringPrintf(&os_version,
-                                    L"%lu.%lu.%lu",
-                                    os_version_info.dwMajorVersion,
-                                    os_version_info.dwMinorVersion,
-                                    os_version_info.dwBuildNumber);
-    if (not NT_SUCCESS(status))
-    {
-        KdPrint(("Failed to create formatted string: 0x%08X\n", status));
-        return FALSE;
-    }
-
-    KdPrint(("OS version: %wZ\n", &os_version));
-
-    if (os_version_info.dwMajorVersion != OS_MAJOR_VERSION or
-        os_version_info.dwMinorVersion != OS_MINOR_VERSION or
-        os_version_info.dwBuildNumber   < OS_BUILD_NUMBER)
-        return FALSE;
-
-    return TRUE;
-}

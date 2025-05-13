@@ -109,9 +109,11 @@
     </DriverSign>
     <ClCompile>
       <LanguageStandard>stdcpp14</LanguageStandard>
+      <PreprocessorDefinitions>USE_FULL_CONFIG_PATH;USE_FLT_INSTEAD_ZW;NEW_FEATURES_TESTING;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+      <EntryPointSymbol>driverEntry</EntryPointSymbol>
+      <AdditionalDependencies>FltMgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -133,14 +135,17 @@
   <ItemGroup>
     <ClCompile Include="tools.c" />
     <ClCompile Include="driver.c" />
+    <ClCompile Include="utils.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tools.h" />
+    <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="FileBlockerDriver.ini">
       <FileType>Config</FileType>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)\$(TargetName)\</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)\$(TargetName)\</DestinationFolders>
     </CopyFileToFolders>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
