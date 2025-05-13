@@ -917,8 +917,8 @@ BOOLEAN isTextBlocked(_In_ UNICODE_STRING file_name)
 
     NT_VERIFY(utf8_string.Length <= utf8_string.MaximumLength);
 
-    KdPrint(("String size: %hu/%hu bytes\n", utf8_string.Length,
-                                             utf8_string.MaximumLength));
+    KdPrint(("String size: %hu/%hu bytes\n", utf8_string.Length,          // нужно прочитать
+                                             utf8_string.MaximumLength)); // можно прочитать
 
     UNICODE_STRING unicode_string;
     BOOLEAN should_block = FALSE;
